@@ -1,0 +1,7 @@
+.git/**
+tags
+test
+*.o
+output*
+.zsh_history
+

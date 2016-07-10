@@ -1,0 +1,6 @@
+# CPPFLAGS=`pkg-config --cflags opencv gtk+-3.0`
+# LDLIBS=`pkg-config --libs opencv gtk+-3.0`
+FLAGS=`pkg-config --libs --cflags opencv gtk+-2.0`
+
+test: main.cpp
+	$(CXX) $(FLAGS) -g -o $@ $<
