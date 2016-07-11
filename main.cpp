@@ -405,7 +405,8 @@ int main(void) {
 
 		vector<DMatch> matches;
 		/* avl_t *tree = */ 
-		matchf(query_d, d);
+		avl_t *eucl_avl = matchf(query_d, d);
+		free_avl(eucl_avl);
 
 		/* DMatch *dmax = (DMatch*) avl_max(tree->root); */
 		/* if (dmax) { */
