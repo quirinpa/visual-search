@@ -1,7 +1,7 @@
 #include "avl.h"
 
-__inline__
-static avl_t *avl_min(register avl_t *curr) {
+/* __inline__ static */
+avl_t *avl_min(register avl_t *curr) {
 	register avl_t *min = curr->left;
 
 	while (min) {
@@ -14,33 +14,44 @@ static avl_t *avl_min(register avl_t *curr) {
 
 #include <stdlib.h>
 void
-free_avl(avl_t *root) {
-	if (root) {
-		register avl_t *curr = avl_min(root);
+avl_free(avl_t *root) {
+	register avl_t *curr = root;
+
+	if (curr) {
+avl_free_go_left:
+		curr = avl_min(curr);
 
 		/* if we wanted to render things in order, 
 		 * we would do so HERE */
 
-		do {
+avl_free_go_right:
+		{
 			register avl_t *right_child = curr->right;
 
-			if (right_child)
-				curr = avl_min(right_child);
-				/* AND HERE */
-			else {
-				/* but we wanna free the tree so we must
-				 * do it while going up from a right child */
-				register bool_t prev_is_left_child;
-				while (curr != root) {
-					register avl_t *prev = curr;
-					curr = curr->parent;
-					prev_is_left_child = prev == curr->left;
-					free(prev);
-
-					if (prev_is_left_child) break;
-				}
+			if (right_child) {
+				curr = right_child;
+				goto avl_free_go_left;
 			}
-		} while (true);
+		}
+		/* AND HERE */
+		{
+			/* but we wanna free the tree so we must
+			 * do it while going up from a right child */
+			register avl_t *prev;
+avl_free_go_up:
+			prev = curr;
+			curr = curr->parent;
+
+			if (!curr) return;
+
+			{
+				register bool_t prev_is_left_child = prev == curr->left;
+				free(prev);
+
+				if (prev_is_left_child) goto avl_free_go_right;
+				else goto avl_free_go_up;
+			}
+		}
 	}
 }
 

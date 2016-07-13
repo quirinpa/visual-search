@@ -6,7 +6,7 @@
 /* DEBUG MACRO transforms node's key to a text representation it writes
  * to FILE *f. Having this defined changes the function definitions of
  * avl_insert, etc. So comment this for more efficient implementations */
-#define AVL_DEBUG(item, f) fprintf(f, "%.0f", (double)*(float*)item)
+/* #define AVL_DEBUG(item, f) fprintf(f, "%.0f", (double)*(float*)item) */
 
 typedef struct avl_st {
 	void *data, *key;
@@ -14,7 +14,8 @@ typedef struct avl_st {
 	signed char balance;
 } avl_t;
 
-void free_avl(avl_t *);
+avl_t *avl_min(register avl_t *);
+void avl_free(avl_t *);
 
 #include "bool.h"
 typedef bool_t (*avl_compare_gfp_t)(void*, void*);
