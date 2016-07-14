@@ -32,6 +32,20 @@ static bool_t compare_dist(float *a, float *b) {
 	return *b > *a;
 }
 
+/* how to reduce avl mem transfer? if it is a vector, pre-allocate
+ * positions close to avl (array of DMatch values, local cache),
+ * and use.indexes to access that array. Or something. But that
+ * requires clusters to reference to them. So have a avl_vec_insert
+ * that does that then calls avl_insert for each element? Meanwhile... */
+__inline__
+static avl_t*
+putMatch(avl_t* t, DMatch *match) {
+	DMatch *copy = (DMatch*) malloc(sizeof(DMatch));
+	memcpy(match, copy, sizeof(DMatch));
+
+	return avl_insert(t, copy, &copy->distance, (avl_compare_gfp_t) compare_dist);
+}
+
 #define use_knn false
 __inline__
 static avl_t *
@@ -45,6 +59,7 @@ matchf(Mat desc1, Mat desc2)
 	matcher->knnMatch(desc1, desc2, knnmatches, 2);
 
 	fputs("\nINSERT MATCHES\t", stderr);
+	/* FIXME returns all 0s */
 	{
 		size_t c = knnmatches.size();
 		if (c) {
@@ -52,15 +67,12 @@ matchf(Mat desc1, Mat desc2)
 			size_t i = 0;
 			do {
 				DMatch *best_ref = &currv->at(0);
-				float *distance_ref = &best_ref->distance;
-				/* please don't change distance value meanwhile */
-				if (currv->size() == 1 || *distance_ref <= .8f * currv->at(1).distance) {
+
+				if ( currv->size() == 1 ||
+						best_ref->distance <= .8f * currv->at(1).distance ) {
+
+					t = putMatch(t, best_ref);
 					n++;
-					/* fprintf(stderr, "try %.0f ", (double)*distance_ref); */
-					t = avl_insert( t,
-							( void* ) best_ref,
-							( void* ) distance_ref,
-							( avl_compare_gfp_t ) compare_dist );
 				}
 
 				currv++; i++;
@@ -78,11 +90,7 @@ matchf(Mat desc1, Mat desc2)
 			DMatch *curr = &save_matches[0];
 
 			do {
-				t = avl_insert(t,
-						( void* )curr,
-						( void* )&curr->distance,
-						( avl_compare_gfp_t ) compare_dist);
-				/* fprintf(stderr, "%f\t", (double)curr->distance); */
+				t = putMatch(t, curr);
 
 				curr++; n++;
 			} while (n<c);
@@ -106,48 +114,48 @@ extern "C" {
 }
 
 #include "avl_iot.h"
-static fifo_t *
+static void
 get_clusters(
+	fifo_t *clusters,
 	avl_t *root,
 	float eps,
 	size_t min_elements,
 	avl_compare_gfp_t cmp)
 {
-	fifo_t *clusters = new_fifo();
-
 	avl_t *curr_cluster = NULL;
 	size_t curr_cluster_n = 0;
 
 	float last_key = 0;
 
-	fputs("\nTRYING CLUSTER: ", stderr);
+	fputs("\nPRINTING TREE: ", stderr);
+	avl_iot(root, [&] (avl_t * curr) {
+		fprintf(stderr, "%.2f/", (double)*(float*)curr->key);
+	});
+
+	fputs("\n-----\nTRYING CLUSTER: ", stderr);
 
 	avl_iot(root, [&] (avl_t * curr) {
 		void *key_ref = curr->key;
 		float key = *(float*)key_ref;
 
-		fprintf(stderr, "/%f-%.0f", (double) key, (double) (key - last_key));
+		if (key - last_key > eps) {
+			if (curr_cluster_n >= min_elements) {
+				fprintf(stderr, " ACCEPT\n");
+				fifo_push(clusters, curr_cluster);
+			}
 
-		/* if (!curr_cluster || key - last_key < eps) { */
-		/* 	curr_cluster = avl_insert(curr_cluster, curr->data, key_ref, cmp); */
-		/* 	curr_cluster_n++; */
-		/* } else { */
-		/* 	if (curr_cluster_n < min_elements) */
-		/* 		avl_free(curr_cluster); */
-		/* 	else { */
-		/* 		fputs("\nACCEPTED.\n", stderr); */
-		/* 		fifo_push(clusters, curr_cluster); */
-		/* 	} */
+			fprintf(stderr, "\nCLUSTER ");
+			curr_cluster = NULL;
+			curr_cluster_n = 0;
+		}
 
-		/* 	fputs("\nTRYING CLUSTER: ", stderr); */
-		/* 	curr_cluster = NULL; */
-		/* 	curr_cluster_n = 0; */
-		/* } */
+		fprintf(stderr, "%.0f/", (double)key);
+
+		curr_cluster = avl_insert(curr_cluster, curr->data, key_ref, cmp);
+		curr_cluster_n++;
 
 		last_key = key;
 	});
-
-	return clusters;
 }
 
 
@@ -189,12 +197,10 @@ int main(void) {
 		times += clock() - start;
 		n++;
 
-		/* vector<DMatch> matches; */
-		/* avl_t *tree = */ 
 		avl_t *eucl_avl = matchf(query_d, d);
 
-		fifo_t *eucl_clusters =
-			get_clusters(eucl_avl, 20.0f, 10, (avl_compare_gfp_t) compare_dist);
+		fifo_t *eucl_clusters = new_fifo();
+		get_clusters(eucl_clusters, eucl_avl, 3.0f, 10, (avl_compare_gfp_t) compare_dist);
 
 		size_t n_clusters = 0; 
 		while (eucl_clusters->top) {
@@ -205,9 +211,7 @@ int main(void) {
 		free(eucl_clusters);
 		avl_free(eucl_avl);
 
-		fprintf(stderr, "%lu clusters\n", n_clusters);
-
-		avl_free(eucl_avl);
+		fprintf(stderr, "\n%lu clusters\n", n_clusters);
 
 	} while (waitKey(1)!='\x1b');
 
