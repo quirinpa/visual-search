@@ -12,6 +12,18 @@ avl_t *avl_min(register avl_t *curr) {
 	return curr;
 }
 
+/* __inline__ static */
+avl_t *avl_max(register avl_t *curr) {
+	register avl_t *max = curr->right;
+
+	while (max) {
+		curr = max;
+		max = curr->right;
+	}
+
+	return curr;
+}
+
 #include <stdlib.h>
 void
 avl_free(avl_t *root) {

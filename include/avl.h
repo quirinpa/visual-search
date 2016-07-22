@@ -15,6 +15,7 @@ typedef struct avl_st {
 } avl_t;
 
 avl_t *avl_min(register avl_t *);
+avl_t *avl_max(register avl_t *);
 void avl_free(avl_t *);
 
 #include "bool.h"

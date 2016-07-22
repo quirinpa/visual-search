@@ -2,6 +2,9 @@
 tags
 test
 *.o
+.*.swp
+.*.swo
+.*.swn
 output*
 .zsh_history
 

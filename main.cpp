@@ -48,7 +48,7 @@ putMatch(avl_t* t, DMatch *match, putMatch_GKEY gkey) {
 										(avl_compare_gfp_t) compare_float_ptrs); /* FIXME */
 }
 
-#define use_knn true
+#define use_knn false
 __inline__
 static avl_t *
 matchf(Mat desc1, Mat desc2)
@@ -61,7 +61,6 @@ matchf(Mat desc1, Mat desc2)
 	matcher->knnMatch(desc1, desc2, knnmatches, 2);
 
 	fputs("\nINSERT MATCHES\t", stderr);
-	/* FIXME returns all 0s */
 	{
 		size_t c = knnmatches.size();
 		if (c) {
@@ -107,7 +106,7 @@ matchf(Mat desc1, Mat desc2)
 
 #endif
 
-	fprintf(stderr, "%lu matches\n\n", n);
+	fprintf(stderr, "%u matches\n\n", n);
 
 	return t;
 }
@@ -122,55 +121,77 @@ extern "C" {
 
 #include "avl_iot.h"
 
+typedef struct cluster_st {
+	avl_t* root;
+	float max, min;
+	struct cluster_st *parent;
+} cluster_t;
+
+static cluster_t *
+new_cluster(avl_t *root, float min, float max, cluster_t *parent) {
+	cluster_t *cluster = (cluster_t*) malloc(sizeof(cluster_t));
+	cluster->root = root;
+	cluster->max = max;
+	cluster->min = min;
+	cluster->parent = parent;
+	return cluster;
+}
+
 template<typename GET_CLUSTERS_GKEY>
 static void
 get_clusters(
 	fifo_t *clusters,
-	avl_t *root,
+	cluster_t *parent,
+	/* avl_t *root, */
 	float eps,
 	size_t min_elements,
 	avl_compare_gfp_t cmp,
 	GET_CLUSTERS_GKEY get_next_key)
 {
-	avl_t *curr_cluster = NULL;
-	size_t curr_cluster_n = 0;
-
+	size_t size = 0;
 	float last_key = 0;
 
-	fputs("\nCLUSTER? ", stderr);
+	avl_t *subcluster_avl = NULL, *parent_avl = parent->root;
 
-	avl_iot(root, [&] (avl_t * curr) {
-		float key = *(float*)curr->key;
+	if (parent) min = *(float*) parent_avl->key;
+	/* fputs("\nCLUSTER? ", stderr); */
+
+	avl_iot(parent_avl, [&] (avl_t * curr) {
+		float key = *(float*) curr->key;
 
 		if (key - last_key > eps) {
-			if (curr_cluster_n >= min_elements) {
-				fprintf(stderr, " ACCEPT\n");
-				fifo_push(clusters, curr_cluster);
+			if (size >= min_elements) {
+				/* fprintf(stderr, " ACCEPT\n"); */
+				
+				fifo_push(clusters, new_cluster(subcluster_avl, min, key, parent));
+
 			}
 
-			fprintf(stderr, "\nCLUSTER ");
-			curr_cluster = NULL;
-			curr_cluster_n = 0;
+			/* fprintf(stderr, "\nCLUSTER "); */
+			subcluster_avl = NULL;
+			size = 0;
 		}
 
-		fprintf(stderr, "%.0f/", (double)key);
+		/* fprintf(stderr, "%.0f/", (double)key); */
 
 		{
 			register DMatch *data = (DMatch*)curr->data;
-			curr_cluster = avl_insert(curr_cluster, data,
-																(void*) get_next_key(data), cmp);
+			subcluster_avl = avl_insert(subcluster_avl, data,
+					(void*) get_next_key(data), cmp);
 		}
-		curr_cluster_n++;
+
+		size++;
 
 		last_key = key;
 	});
 
-	if (curr_cluster_n >= min_elements) {
-		fprintf(stderr, " ACCEPT\n");
-		fifo_push(clusters, curr_cluster);
+
+	if (size >= min_elements) {
+		/* fprintf(stderr, " ACCEPT\n"); */
+		fifo_push(clusters, new_cluster(subcluster_avl, min, last_key, parent));
 	}
 
-	avl_free(root);
+	avl_free(parent_avl);
 }
 
 template<typename re_cluster_GKEY>
@@ -183,15 +204,28 @@ re_cluster(
 	re_cluster_GKEY gkey)
 {
 	fifo_t *result = new_fifo();
+
 	while (source->top) {
-		avl_t *cluster = (avl_t*) fifo_pop(source);
+		cluster_t *cluster = (cluster_t*) fifo_pop(source);
+		/* avl_t *cluster = (avl_t*) fifo_pop(source); */
 
 		get_clusters(result, cluster, min_dist, min_elements,
 								 (avl_compare_gfp_t) compare_float_ptrs, gkey);
 	}
+
 	free(source);
 	return result;
 }
+
+/* static void */
+/* drawCluster(Mat dest, fifo_t *cluster) */
+/* { */
+/* 	while (cluster->top) { */
+/* 		avl_t *cluster = (avl_t*) fifo_pop(cluster); */
+/* 		double min = avl_min(cluster), max = avl_max(cluster); */
+/* 		line(dest, Point2f(min, max, Scalar(255, 0, 0), 4); */
+/* 	} */
+/* } */
 
 /* int main(int argc, char **argv) { */
 int main(void) {
@@ -234,39 +268,70 @@ int main(void) {
 		/* gets freed by get_clusters */
 		avl_t *eucl_avl = matchf(query_d, d);
 
-		fputs("\nPRINTING TREE: ", stderr);
-		avl_iot(eucl_avl, [&] (avl_t * curr) {
-			fprintf(stderr, "%.2f/", (double)*(float*)curr->key);
-		});
+		/* fputs("\nPRINTING TREE: ", stderr); */
+		/* avl_iot(eucl_avl, [&] (avl_t * curr) { */
+		/* 	fprintf(stderr, "%.2f/", (double)*(float*)curr->key); */
+		/* }); */
 
-		fputs("\nGENERATING EUCL CLUSTERS SORTED BY X", stderr);
+		/* fputs("\nGENERATING EUCL CLUSTERS SORTED BY X", stderr); */
 		fifo_t *eucl_clusters_x = new_fifo();
-		get_clusters(eucl_clusters_x, eucl_avl, 10.0f, 10,
-			 (avl_compare_gfp_t) compare_float_ptrs,
-			 [&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.x; });
 
-		fputs("\nGENERATING X CLUSTERS SORTED BY Y", stderr);
+		get_clusters(eucl_clusters_x, new_cluster(eucl_avl, 0, 0, NULL),
+				10.0f, 10, (avl_compare_gfp_t) compare_float_ptrs,
+				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.x; });
+
+		/* fputs("\nGENERATING X CLUSTERS SORTED BY Y", stderr); */
 		fifo_t *x_clusters_y = re_cluster(eucl_clusters_x, 10.0f, 10,
-			[&](DMatch *data) ->float* { return &kp[data->trainIdx].pt.y; });
+				[&](DMatch *data) ->float* { return &kp[data->trainIdx].pt.y; });
 
-		fputs("\nGENERATING Y CLUSTERS SORTED BY Y", stderr);
+
+		/* fputs("\nGENERATING Y CLUSTERS SORTED BY Y", stderr); */
 		fifo_t *y_clusters_y = re_cluster(x_clusters_y, 10.0f, 10,
-			[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.y; });
+				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.y; });
 
-		size_t n_y_clusters_y = 0;
+		{
+			fifo_node_t **top = &y_clusters_y->top;
+			size_t n_y_clusters_y = 0;
 
-		fputs("\nCLEANING UP", stderr);
-		while (y_clusters_y->top) {
-			avl_t *y_cluster_y = (avl_t*) fifo_pop(y_clusters_y);
-			free(y_cluster_y);
-			n_y_clusters_y++;
+			while (*top) {
+				cluster_t *cluster = (cluster_t*) fifo_pop(y_clusters_y),
+									*xparent = cluster->parent->parent;
+
+				/* float xmin = (float) cframe.cols, xmax = 0; */
+				avl_iot(cluster->root, [&] (avl_t* avlnode) {
+					Point2f cluster_pt = kp[((DMatch*) avlnode->data)->trainIdx].pt;
+
+					line(cframe, cluster_pt, cluster_pt, Scalar(255, 255, 0), 2);
+
+					/* { */
+					/* 	float x = cluster_pt.x; */
+					/* 	if (x < xmin) xmin = x; */
+					/* 	if (x > xmax) xmax = x; */
+					/* } */
+
+				});
+
+				rectangle(cframe,
+						/* Point2f(xmin, cluster->min), */
+						/* Point2f(xmax, cluster->max), */
+						Point2f(xparent->min, cluster->min),
+						Point2f(xparent->max, cluster->max),
+						Scalar(255, 0, 0), 1);
+
+				avl_free(cluster->root);
+				free(cluster);
+
+				n_y_clusters_y++;
+			}
+
+			fprintf(stderr, "\n%u clusters\n", n_y_clusters_y);
 		}
 
 		free(y_clusters_y);
 
-		fprintf(stderr, "\n%lu clusters\n", n_y_clusters_y);
+		imshow("d", cframe);
 
-	} while (waitKey(0)!='\x1b');
+	} while (waitKey(1)!='\x1b');
 
 	fprintf(stderr, "Avg time: %fs\n", (double)times/((double)n*CLOCKS_PER_SEC));
 
