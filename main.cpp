@@ -121,27 +121,11 @@ extern "C" {
 
 #include "avl_iot.h"
 
-typedef struct cluster_st {
-	avl_t* root;
-	float max, min;
-	struct cluster_st *parent;
-} cluster_t;
-
-static cluster_t *
-new_cluster(avl_t *root, float min, float max, cluster_t *parent) {
-	cluster_t *cluster = (cluster_t*) malloc(sizeof(cluster_t));
-	cluster->root = root;
-	cluster->max = max;
-	cluster->min = min;
-	cluster->parent = parent;
-	return cluster;
-}
-
 template<typename GET_CLUSTERS_GKEY>
 static void
 get_clusters(
 	fifo_t *clusters,
-	cluster_t *parent,
+	avl_t *parent_avl,
 	/* avl_t *root, */
 	float eps,
 	size_t min_elements,
@@ -150,30 +134,23 @@ get_clusters(
 {
 	size_t size = 0;
 	float last_key = 0;
+	avl_t *subcluster_avl = NULL;
 
-	avl_t *subcluster_avl = NULL, *parent_avl = parent->root;
-
-	if (parent) min = *(float*) parent_avl->key;
 	/* fputs("\nCLUSTER? ", stderr); */
-
 	avl_iot(parent_avl, [&] (avl_t * curr) {
 		float key = *(float*) curr->key;
 
 		if (key - last_key > eps) {
 			if (size >= min_elements) {
 				/* fprintf(stderr, " ACCEPT\n"); */
-				
-				fifo_push(clusters, new_cluster(subcluster_avl, min, key, parent));
-
+				fifo_push(clusters, subcluster_avl);
 			}
 
 			/* fprintf(stderr, "\nCLUSTER "); */
 			subcluster_avl = NULL;
 			size = 0;
 		}
-
 		/* fprintf(stderr, "%.0f/", (double)key); */
-
 		{
 			register DMatch *data = (DMatch*)curr->data;
 			subcluster_avl = avl_insert(subcluster_avl, data,
@@ -181,14 +158,12 @@ get_clusters(
 		}
 
 		size++;
-
 		last_key = key;
 	});
 
-
 	if (size >= min_elements) {
 		/* fprintf(stderr, " ACCEPT\n"); */
-		fifo_push(clusters, new_cluster(subcluster_avl, min, last_key, parent));
+		fifo_push(clusters, subcluster_avl);
 	}
 
 	avl_free(parent_avl);
@@ -206,11 +181,11 @@ re_cluster(
 	fifo_t *result = new_fifo();
 
 	while (source->top) {
-		cluster_t *cluster = (cluster_t*) fifo_pop(source);
-		/* avl_t *cluster = (avl_t*) fifo_pop(source); */
+		/* cluster_t *cluster = (cluster_t*) fifo_pop(source); */
+		avl_t *cluster_avl = (avl_t*) fifo_pop(source);
 
-		get_clusters(result, cluster, min_dist, min_elements,
-								 (avl_compare_gfp_t) compare_float_ptrs, gkey);
+		get_clusters(result, cluster_avl, min_dist, min_elements,
+				(avl_compare_gfp_t) compare_float_ptrs, gkey);
 	}
 
 	free(source);
@@ -228,6 +203,7 @@ re_cluster(
 /* } */
 
 /* int main(int argc, char **argv) { */
+
 int main(void) {
 	Mat query = imread("resources/ss.png");
 	Ptr<FeatureDetector> detector = BRISK::create();
@@ -276,8 +252,8 @@ int main(void) {
 		/* fputs("\nGENERATING EUCL CLUSTERS SORTED BY X", stderr); */
 		fifo_t *eucl_clusters_x = new_fifo();
 
-		get_clusters(eucl_clusters_x, new_cluster(eucl_avl, 0, 0, NULL),
-				10.0f, 10, (avl_compare_gfp_t) compare_float_ptrs,
+		get_clusters(eucl_clusters_x, eucl_avl, 10.0f, 10,
+				(avl_compare_gfp_t) compare_float_ptrs,
 				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.x; });
 
 		/* fputs("\nGENERATING X CLUSTERS SORTED BY Y", stderr); */
@@ -294,32 +270,30 @@ int main(void) {
 			size_t n_y_clusters_y = 0;
 
 			while (*top) {
-				cluster_t *cluster = (cluster_t*) fifo_pop(y_clusters_y),
-									*xparent = cluster->parent->parent;
+				avl_t *cluster_avl = (avl_t*) fifo_pop(y_clusters_y);
 
-				/* float xmin = (float) cframe.cols, xmax = 0; */
-				avl_iot(cluster->root, [&] (avl_t* avlnode) {
+				float xmin = (float) cframe.cols, xmax = 0;
+				avl_iot(cluster_avl, [&] (avl_t* avlnode) {
 					Point2f cluster_pt = kp[((DMatch*) avlnode->data)->trainIdx].pt;
 
 					line(cframe, cluster_pt, cluster_pt, Scalar(255, 255, 0), 2);
 
-					/* { */
-					/* 	float x = cluster_pt.x; */
-					/* 	if (x < xmin) xmin = x; */
-					/* 	if (x > xmax) xmax = x; */
-					/* } */
+					{
+						float x = cluster_pt.x;
+						if (x < xmin) xmin = x;
+						if (x > xmax) xmax = x;
+					}
 
 				});
 
 				rectangle(cframe,
 						/* Point2f(xmin, cluster->min), */
 						/* Point2f(xmax, cluster->max), */
-						Point2f(xparent->min, cluster->min),
-						Point2f(xparent->max, cluster->max),
+						Point2f(xmin, *(float*) avl_min(cluster_avl)->key),
+						Point2f(xmax, *(float*) avl_max(cluster_avl)->key),
 						Scalar(255, 0, 0), 1);
 
-				avl_free(cluster->root);
-				free(cluster);
+				avl_free(cluster_avl);
 
 				n_y_clusters_y++;
 			}
