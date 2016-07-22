@@ -252,17 +252,17 @@ int main(void) {
 		/* fputs("\nGENERATING EUCL CLUSTERS SORTED BY X", stderr); */
 		fifo_t *eucl_clusters_x = new_fifo();
 
-		get_clusters(eucl_clusters_x, eucl_avl, 10.0f, 10,
+		get_clusters(eucl_clusters_x, eucl_avl, 5.0f, 10,
 				(avl_compare_gfp_t) compare_float_ptrs,
 				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.x; });
 
 		/* fputs("\nGENERATING X CLUSTERS SORTED BY Y", stderr); */
-		fifo_t *x_clusters_y = re_cluster(eucl_clusters_x, 10.0f, 10,
+		fifo_t *x_clusters_y = re_cluster(eucl_clusters_x, 5.0f, 10,
 				[&](DMatch *data) ->float* { return &kp[data->trainIdx].pt.y; });
 
 
 		/* fputs("\nGENERATING Y CLUSTERS SORTED BY Y", stderr); */
-		fifo_t *y_clusters_y = re_cluster(x_clusters_y, 10.0f, 10,
+		fifo_t *y_clusters_y = re_cluster(x_clusters_y, 5.0f, 10,
 				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.y; });
 
 		{
@@ -272,11 +272,24 @@ int main(void) {
 			while (*top) {
 				avl_t *cluster_avl = (avl_t*) fifo_pop(y_clusters_y);
 
+				float ymin = *(float*) avl_min(cluster_avl)->key,
+							ymax = *(float*) avl_max(cluster_avl)->key;
+
+				if (ymax - ymin < 5.0f) continue;
+
 				float xmin = (float) cframe.cols, xmax = 0;
+
+				/* vector<Point2f> from_v, to_v; */
+
+				size_t n_points = 0;
+
 				avl_iot(cluster_avl, [&] (avl_t* avlnode) {
-					Point2f cluster_pt = kp[((DMatch*) avlnode->data)->trainIdx].pt;
+					DMatch *match = (DMatch*) avlnode->data;
+					Point2f cluster_pt = kp[match->trainIdx].pt;
 
 					line(cframe, cluster_pt, cluster_pt, Scalar(255, 255, 0), 2);
+					/* to_v.push_back(cluster_pt); */
+					/* from_v.push_back(query_kp[match->queryIdx].pt); */
 
 					{
 						float x = cluster_pt.x;
@@ -284,14 +297,45 @@ int main(void) {
 						if (x > xmax) xmax = x;
 					}
 
+					n_points++;
 				});
+
+				if (xmax - xmin < 5.0f) continue;
+
+				/* Mat h = findHomography(from_v, to_v, CV_LMEDS); */
+
+				/* const double det = h.at<double>(0,0)*h.at<double>(1,1) - \ */
+				/* 									 h.at<double>(1,0)*h.at<double>(0,1); */ 
+
+				/* if (abs(det) > 0.5) continue; */
 
 				rectangle(cframe,
 						/* Point2f(xmin, cluster->min), */
 						/* Point2f(xmax, cluster->max), */
-						Point2f(xmin, *(float*) avl_min(cluster_avl)->key),
-						Point2f(xmax, *(float*) avl_max(cluster_avl)->key),
+						Point2f(xmin, ymin),
+						Point2f(xmax, ymax),
 						Scalar(255, 0, 0), 1);
+
+				ostringstream convert;
+				convert << n_points;
+				/* char n_matches_str[10]; */
+				/* sprintf(n_matches_str, "%u", n_points); */
+				putText(cframe, convert.str(), Point2f(xmax + 5, ymin), FONT_HERSHEY_PLAIN, .9, Scalar(0, 0, 255));
+
+				/* int width = (int) (xmax - xmin), */
+				/* 		height = (int) (ymax - ymin); */
+
+				/* Rect bb((int)xmin, (int)ymin, width, height); */
+
+				/* Mat subimg = cframe(bb).clone(); */
+
+				/* Ptr<MSER> ms = MSER::create(); */
+				/* vector<vector<Point>> regions; */
+				/* vector<Rect> mserBBox; */
+				/* ms->detectRegions(subimg, regions, mserBBox); */
+				/* drawContours(subimg, regions, 1, Scalar(255, 0, 255), CV_FILLED); */
+
+				/* subimg.copyTo(cframe(bb)); */
 
 				avl_free(cluster_avl);
 
