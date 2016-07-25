@@ -280,18 +280,21 @@ int main(void) {
 		/* fputs("\nGENERATING EUCL CLUSTERS SORTED BY X", stderr); */
 		fifo_t *eucl_clusters_x = new_fifo();
 
-		const int MIN_P = 3;
+		const int MIN_P = 5;
+		const float MAX_XY_DIST = .05f,
+					PX_MAX_XY_DIST = MAX_XY_DIST * (float)cframe.cols;
 
-		get_clusters(eucl_clusters_x, cross_eucl_avl, 10.0f, MIN_P,
+
+		get_clusters(eucl_clusters_x, cross_eucl_avl, 3.0f, MIN_P,
 				(avl_compare_gfp_t) compare_float_ptrs,
 				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.x; });
 
 		/* fputs("\nGENERATING X CLUSTERS SORTED BY Y", stderr); */
-		fifo_t *x_clusters_y = re_cluster(eucl_clusters_x, 7.0f, MIN_P,
+		fifo_t *x_clusters_y = re_cluster(eucl_clusters_x, PX_MAX_XY_DIST, MIN_P,
 				[&](DMatch *data) ->float* { return &kp[data->trainIdx].pt.y; });
 
 		/* fputs("\nGENERATING Y CLUSTERS SORTED BY Y", stderr); */
-		fifo_t *y_clusters_y = re_cluster(x_clusters_y, 7.0f, MIN_P,
+		fifo_t *y_clusters_y = re_cluster(x_clusters_y, PX_MAX_XY_DIST, MIN_P,
 				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.y; });
 
 		/* { */
@@ -336,12 +339,12 @@ int main(void) {
 
 				if (xmax - xmin < 3.0f) continue;
 
-				/* Mat h = findHomography(from_v, to_v, CV_RANSAC); */
+				/* Mat h = findHomography(from_v, to_v, CV_LMEDS); */
 
 				/* if (!h.rows) continue; */
 
-				/* const double det = h.at<double>(0,0)*h.at<double>(1,1) - \ */
-				/* 									 h.at<double>(1,0)*h.at<double>(0,1); */ 
+/* 				const double det = h.at<double>(0,0)*h.at<double>(1,1) - \ */
+/* 													 h.at<double>(1,0)*h.at<double>(0,1); */ 
 
 				/* if ( abs(det) > 1 ) continue; */
 				/* if ( det < 0 || det > 0.05 ) continue; */
