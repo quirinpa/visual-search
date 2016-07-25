@@ -208,7 +208,7 @@ re_cluster(
 /* } */
 
 /* int main(int argc, char **argv) { */
-
+/* #include <time.h> */
 int main(void) {
 	Mat query = imread("resources/ss.png");
 	Ptr<FeatureDetector> detector = BRISK::create();
@@ -229,6 +229,8 @@ int main(void) {
 	unsigned n = 0;
 	clock_t times = 0;
 
+	/* srand(time(NULL)); */
+
 	do {
 		Mat cframe;
 		cap >> cframe;
@@ -248,50 +250,76 @@ int main(void) {
 
 		/* gets freed by get_clusters */
 		map<int, DMatch>
-			norm_eucl_m = matchf(query_d, d),
-			rev_eucl_m = matchf(d, query_d);
+			norm_m = matchf(query_d, d),
+			rev_m = matchf(d, query_d);
 
-		avl_t *cross_eucl_avl = NULL;
+		/* avl_t *cross_eucl_avl = NULL; */
+		avl_t *cross_x_avl = NULL;
 
-		for (map<int, DMatch>::iterator it = norm_eucl_m.begin();
-				it != norm_eucl_m.end(); ++it) {
+		for (map<int, DMatch>::iterator it = norm_m.begin();
+				it != norm_m.end(); ++it) {
 
 			DMatch *curr = &it->second;
 
 			int trainIdx = it->first,
 					queryIdx = curr->queryIdx;
 
-			auto search = rev_eucl_m.find(queryIdx);
+			auto search = rev_m.find(queryIdx);
 
-			if (search != rev_eucl_m.end() &&
+			if (search != rev_m.end() &&
 					search->second.queryIdx == trainIdx) {
 
-				cross_eucl_avl = avl_insert(cross_eucl_avl, (void*) curr,
-						(void*) &curr->distance, (avl_compare_gfp_t) compare_float_ptrs);
+				/* cross_eucl_avl = avl_insert(cross_eucl_avl, (void*) curr, */
+				/* 		(void*) &curr->distance, (avl_compare_gfp_t) compare_float_ptrs); */
+
+				cross_x_avl = avl_insert(cross_x_avl, (void*) curr,
+						(void*) &kp[curr->trainIdx].pt.x,
+						(avl_compare_gfp_t) compare_float_ptrs);
 			}
 		}
+
 		/* fputs("\nPRINTING TREE: ", stderr); */
-		avl_iot(cross_eucl_avl, [&] (avl_t * curr) {
+		avl_iot(cross_x_avl, [&] (avl_t * curr) {
 			Point2f matchp = kp[((DMatch*)curr->data)->trainIdx].pt;
 			line(cframe, matchp, matchp, Scalar(0, 255, 255), 2);
 			/* fprintf(stderr, "%.2f/", (double)*(float*)curr->key); */
 		});
 
-		/* fputs("\nGENERATING EUCL CLUSTERS SORTED BY X", stderr); */
-		fifo_t *eucl_clusters_x = new_fifo();
+		/* /1* fputs("\nPRINTING TREE: ", stderr); *1/ */
+		/* avl_iot(cross_eucl_avl, [&] (avl_t * curr) { */
+		/* 	Point2f matchp = kp[((DMatch*)curr->data)->trainIdx].pt; */
+		/* 	line(cframe, matchp, matchp, Scalar(0, 255, 255), 2); */
+		/* 	/1* fprintf(stderr, "%.2f/", (double)*(float*)curr->key); *1/ */
+		/* }); */
 
-		const int MIN_P = 5;
-		const float MAX_XY_DIST = .05f,
+		/* fputs("\nGENERATING EUCL CLUSTERS SORTED BY X", stderr); */
+		/* fifo_t *eucl_clusters_x = new_fifo(); */
+
+		const int MIN_P = 3;
+		const float MAX_XY_DIST = .03f,
 					PX_MAX_XY_DIST = MAX_XY_DIST * (float)cframe.cols;
 
 
-		get_clusters(eucl_clusters_x, cross_eucl_avl, 3.0f, MIN_P,
-				(avl_compare_gfp_t) compare_float_ptrs,
-				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.x; });
+		/* get_clusters(eucl_clusters_x, cross_eucl_avl, 3.0f, MIN_P, */
+		/* 		(avl_compare_gfp_t) compare_float_ptrs, */
+		/* 		[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.x; }); */
 
-		/* fputs("\nGENERATING X CLUSTERS SORTED BY Y", stderr); */
-		fifo_t *x_clusters_y = re_cluster(eucl_clusters_x, PX_MAX_XY_DIST, MIN_P,
-				[&](DMatch *data) ->float* { return &kp[data->trainIdx].pt.y; });
+		/* /1* fputs("\nGENERATING X CLUSTERS SORTED BY Y", stderr); *1/ */
+		fifo_t *x_clusters_y = new_fifo();
+
+		/* /1* fputs("\nGENERATING X CLUSTERS SORTED BY Y", stderr); *1/ */
+		get_clusters(x_clusters_y, cross_x_avl, PX_MAX_XY_DIST, MIN_P,
+				(avl_compare_gfp_t) compare_float_ptrs,
+				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.y; });
+		/* 		(avl_compare_gfp_t) compare_float_ptrs, */
+		/* 		[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.x; }); */
+
+		/* fifo_t *x_clusters_y = re_cluster(crossl_clusters_x, PX_MAX_XY_DIST, MIN_P, */
+		/* 		[&](DMatch *data) ->float* { return &kp[data->trainIdx].pt.y; }); */
+
+		/* /1* fputs("\nGENERATING X CLUSTERS SORTED BY Y", stderr); *1/ */
+		/* fifo_t *x_clusters_y = re_cluster(eucl_clusters_x, PX_MAX_XY_DIST, MIN_P, */
+		/* 		[&](DMatch *data) ->float* { return &kp[data->trainIdx].pt.y; }); */
 
 		/* fputs("\nGENERATING Y CLUSTERS SORTED BY Y", stderr); */
 		fifo_t *y_clusters_y = re_cluster(x_clusters_y, PX_MAX_XY_DIST, MIN_P,
@@ -309,14 +337,7 @@ int main(void) {
 			while (*top) {
 				avl_t *cluster_avl = (avl_t*) fifo_pop(y_clusters_y);
 
-				float ymin = *(float*) avl_min(cluster_avl)->key,
-							ymax = *(float*) avl_max(cluster_avl)->key;
-
-				if (ymax - ymin < 3.0f) continue;
-
-				float xmin = (float) cframe.cols, xmax = 0;
-
-				/* vector<Point2f> from_v, to_v; */
+				vector<Point2f> from_v, to_v;
 
 				size_t n_points = 0;
 
@@ -325,29 +346,51 @@ int main(void) {
 					Point2f cluster_pt = kp[match->trainIdx].pt;
 
 					line(cframe, cluster_pt, cluster_pt, Scalar(255, 255, 0), 2);
-					/* to_v.push_back(cluster_pt); */
-					/* from_v.push_back(query_kp[match->queryIdx].pt); */
-
-					{
-						float x = cluster_pt.x;
-						if (x < xmin) xmin = x;
-						if (x > xmax) xmax = x;
-					}
+					to_v.push_back(cluster_pt);
+					from_v.push_back(query_kp[match->queryIdx].pt);
 
 					n_points++;
 				});
 
-				if (xmax - xmin < 3.0f) continue;
 
-				/* Mat h = findHomography(from_v, to_v, CV_LMEDS); */
+				vector<unsigned char> inliersMask;
+				/* Mat h = findHomography(from_v, to_v, CV_RANSAC, 3, inliersMask); */
+				Mat h = findHomography(from_v, to_v, CV_LMEDS, 3, inliersMask);
 
-				/* if (!h.rows) continue; */
+				if (!h.rows) continue;
 
-/* 				const double det = h.at<double>(0,0)*h.at<double>(1,1) - \ */
-/* 													 h.at<double>(1,0)*h.at<double>(0,1); */ 
+				const double det = h.at<double>(0,0)*h.at<double>(1,1) - \
+													 h.at<double>(1,0)*h.at<double>(0,1); 
 
 				/* if ( abs(det) > 1 ) continue; */
-				/* if ( det < 0 || det > 0.05 ) continue; */
+				if ( det < 0 || det > 0.05 ) continue;
+
+				avl_t *final_avl = NULL;
+
+				float xmin = (float) cframe.cols, xmax = 0,
+							ymin = (float) cframe.rows, ymax = 0;
+
+				unsigned i = 0;
+				avl_iot(cluster_avl, [&] (avl_t* avlnode) {
+					DMatch *curr = (DMatch*) avlnode->data;
+					if (inliersMask[i++] == 1) {
+						Point2f cluster_pt = kp[curr->trainIdx].pt;
+						float x = cluster_pt.x, y = cluster_pt.y;
+
+						if (x < xmin) xmin = x;
+						if (x > xmax) xmax = x;
+						if (y < ymin) ymin = y;
+						if (y > ymax) ymax = y;
+
+						final_avl = avl_insert(final_avl, (void*) curr,
+							(void*) &cluster_pt.x,
+							(avl_compare_gfp_t) compare_float_ptrs);
+
+						line(cframe, cluster_pt, cluster_pt, Scalar(0, 0, 255), 2);
+					}
+				});
+
+				if (xmax - xmin < 3.0f || ymax - ymin < 3.0f) continue;
 
 				rectangle(cframe,
 						/* Point2f(xmin, cluster->min), */
@@ -373,7 +416,9 @@ int main(void) {
 				/* vector<vector<Point>> regions; */
 				/* vector<Rect> mserBBox; */
 				/* ms->detectRegions(subimg, regions, mserBBox); */
-				/* drawContours(subimg, regions, 1, Scalar(255, 0, 255), CV_FILLED); */
+				/* for (size_t i = 0; i < regions.size(); i++) { */
+				/* 	drawContours(subimg, regions, i, Scalar(rand()%255, rand()%255, rand()%255), CV_FILLED); */
+				/* } */
 
 				/* subimg.copyTo(cframe(bb)); */
 
