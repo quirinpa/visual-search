@@ -51,10 +51,11 @@ putMatch(avl_t* t, DMatch *match, putMatch_GKEY gkey) {
 #include <map>
 #define use_knn false
 __inline__
-static avl_t *
+static map<int, DMatch>
 matchf(Mat desc1, Mat desc2)
 {
-	avl_t *t = NULL;
+	map<int, DMatch> m;
+	/* avl_t *t = NULL; */
 	size_t n = 0;
 
 #if use_knn
@@ -73,9 +74,10 @@ matchf(Mat desc1, Mat desc2)
 				if ( currv->size() == 1 ||
 						best_ref->distance <= .8f * currv->at(1).distance ) {
 
-					t = putMatch(t, best_ref, [](DMatch* copy) -> float* {
-						return &copy->distance;
-					});
+					m[best_ref->trainIdx] = *best_ref;
+					/* t = putMatch(t, best_ref, [](DMatch* copy) -> float* { */
+					/* 	return &copy->distance; */
+					/* }); */
 
 					n++;
 				}
@@ -95,9 +97,10 @@ matchf(Mat desc1, Mat desc2)
 			DMatch *curr = &save_matches[0];
 
 			do {
-				t = putMatch(t, curr, [](DMatch* copy) -> float* {
-					return &copy->distance;
-				});
+				m[curr->trainIdx] = *curr;
+				/* t = putMatch(t, curr, [](DMatch* copy) -> float* { */
+				/* 	return &copy->distance; */
+				/* }); */
 
 				curr++; n++;
 			} while (n<c);
@@ -109,7 +112,8 @@ matchf(Mat desc1, Mat desc2)
 
 	fprintf(stderr, "%u matches\n\n", n);
 
-	return t;
+	/* return t; */
+	return m;
 }
 
 typedef float (*diff_gfp_t)(void *, void*);
@@ -243,39 +247,57 @@ int main(void) {
 		n++;
 
 		/* gets freed by get_clusters */
-		avl_t *eucl_avl = matchf(query_d, d),
-					*rev_eucl_avl = matchf(d, query_d),
-					*cross_eucl_avl = NULL;
+		map<int, DMatch>
+			norm_eucl_m = matchf(query_d, d),
+			rev_eucl_m = matchf(d, query_d);
 
-		/* cross-match test */
+		avl_t *cross_eucl_avl = NULL;
 
-		/* queryIdx -> trainIdx && trainIdx -> queryIdx */
-		avl_iot(eucl_avl, [&](avl_t *avlnode) {
-				if (find(rev_eucl_avl, avlnode->key, [](void *key_a, void *key_b) -> int {
+		for (map<int, DMatch>::iterator it = norm_eucl_m.begin();
+				it != norm_eucl_m.end(); ++it) {
 
-				});
-		});
+			DMatch *curr = &it->second;
 
+			int trainIdx = it->first,
+					queryIdx = curr->queryIdx;
+
+			auto search = rev_eucl_m.find(queryIdx);
+
+			if (search != rev_eucl_m.end() &&
+					search->second.queryIdx == trainIdx) {
+
+				cross_eucl_avl = avl_insert(cross_eucl_avl, (void*) curr,
+						(void*) &curr->distance, (avl_compare_gfp_t) compare_float_ptrs);
+			}
+		}
 		/* fputs("\nPRINTING TREE: ", stderr); */
-		/* avl_iot(eucl_avl, [&] (avl_t * curr) { */
-		/* 	fprintf(stderr, "%.2f/", (double)*(float*)curr->key); */
-		/* }); */
+		avl_iot(cross_eucl_avl, [&] (avl_t * curr) {
+			Point2f matchp = kp[((DMatch*)curr->data)->trainIdx].pt;
+			line(cframe, matchp, matchp, Scalar(0, 255, 255), 2);
+			/* fprintf(stderr, "%.2f/", (double)*(float*)curr->key); */
+		});
 
 		/* fputs("\nGENERATING EUCL CLUSTERS SORTED BY X", stderr); */
 		fifo_t *eucl_clusters_x = new_fifo();
 
-		get_clusters(eucl_clusters_x, eucl_avl, 20.0f, 10,
+		const int MIN_P = 3;
+
+		get_clusters(eucl_clusters_x, cross_eucl_avl, 10.0f, MIN_P,
 				(avl_compare_gfp_t) compare_float_ptrs,
 				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.x; });
 
 		/* fputs("\nGENERATING X CLUSTERS SORTED BY Y", stderr); */
-		fifo_t *x_clusters_y = re_cluster(eucl_clusters_x, 5.0f, 10,
+		fifo_t *x_clusters_y = re_cluster(eucl_clusters_x, 7.0f, MIN_P,
 				[&](DMatch *data) ->float* { return &kp[data->trainIdx].pt.y; });
 
-
 		/* fputs("\nGENERATING Y CLUSTERS SORTED BY Y", stderr); */
-		fifo_t *y_clusters_y = re_cluster(x_clusters_y, 5.0f, 10,
+		fifo_t *y_clusters_y = re_cluster(x_clusters_y, 7.0f, MIN_P,
 				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.y; });
+
+		/* { */
+		/* 	fifo_node_t **top = &y_clusters_y->top; */
+			
+		/* } */
 
 		{
 			fifo_node_t **top = &y_clusters_y->top;
@@ -287,11 +309,11 @@ int main(void) {
 				float ymin = *(float*) avl_min(cluster_avl)->key,
 							ymax = *(float*) avl_max(cluster_avl)->key;
 
-				if (ymax - ymin < 5.0f) continue;
+				if (ymax - ymin < 3.0f) continue;
 
 				float xmin = (float) cframe.cols, xmax = 0;
 
-				vector<Point2f> from_v, to_v;
+				/* vector<Point2f> from_v, to_v; */
 
 				size_t n_points = 0;
 
@@ -300,8 +322,8 @@ int main(void) {
 					Point2f cluster_pt = kp[match->trainIdx].pt;
 
 					line(cframe, cluster_pt, cluster_pt, Scalar(255, 255, 0), 2);
-					to_v.push_back(cluster_pt);
-					from_v.push_back(query_kp[match->queryIdx].pt);
+					/* to_v.push_back(cluster_pt); */
+					/* from_v.push_back(query_kp[match->queryIdx].pt); */
 
 					{
 						float x = cluster_pt.x;
@@ -312,17 +334,17 @@ int main(void) {
 					n_points++;
 				});
 
-				if (xmax - xmin < 5.0f) continue;
+				if (xmax - xmin < 3.0f) continue;
 
-				Mat h = findHomography(from_v, to_v, CV_LMEDS);
+				/* Mat h = findHomography(from_v, to_v, CV_RANSAC); */
 
-				if (!h.rows) continue;
+				/* if (!h.rows) continue; */
 
-				const double det = h.at<double>(0,0)*h.at<double>(1,1) - \
-													 h.at<double>(1,0)*h.at<double>(0,1); 
+				/* const double det = h.at<double>(0,0)*h.at<double>(1,1) - \ */
+				/* 									 h.at<double>(1,0)*h.at<double>(0,1); */ 
 
 				/* if ( abs(det) > 1 ) continue; */
-				if ( det < 0 || det > 0.05 ) continue;
+				/* if ( det < 0 || det > 0.05 ) continue; */
 
 				rectangle(cframe,
 						/* Point2f(xmin, cluster->min), */
