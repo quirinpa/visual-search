@@ -48,6 +48,7 @@ putMatch(avl_t* t, DMatch *match, putMatch_GKEY gkey) {
 										(avl_compare_gfp_t) compare_float_ptrs); /* FIXME */
 }
 
+#include <map>
 #define use_knn false
 __inline__
 static avl_t *
@@ -242,7 +243,18 @@ int main(void) {
 		n++;
 
 		/* gets freed by get_clusters */
-		avl_t *eucl_avl = matchf(query_d, d);
+		avl_t *eucl_avl = matchf(query_d, d),
+					*rev_eucl_avl = matchf(d, query_d),
+					*cross_eucl_avl = NULL;
+
+		/* cross-match test */
+
+		/* queryIdx -> trainIdx && trainIdx -> queryIdx */
+		avl_iot(eucl_avl, [&](avl_t *avlnode) {
+				if (find(rev_eucl_avl, avlnode->key, [](void *key_a, void *key_b) -> int {
+
+				});
+		});
 
 		/* fputs("\nPRINTING TREE: ", stderr); */
 		/* avl_iot(eucl_avl, [&] (avl_t * curr) { */
@@ -252,7 +264,7 @@ int main(void) {
 		/* fputs("\nGENERATING EUCL CLUSTERS SORTED BY X", stderr); */
 		fifo_t *eucl_clusters_x = new_fifo();
 
-		get_clusters(eucl_clusters_x, eucl_avl, 5.0f, 10,
+		get_clusters(eucl_clusters_x, eucl_avl, 20.0f, 10,
 				(avl_compare_gfp_t) compare_float_ptrs,
 				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.x; });
 
@@ -279,7 +291,7 @@ int main(void) {
 
 				float xmin = (float) cframe.cols, xmax = 0;
 
-				/* vector<Point2f> from_v, to_v; */
+				vector<Point2f> from_v, to_v;
 
 				size_t n_points = 0;
 
@@ -288,8 +300,8 @@ int main(void) {
 					Point2f cluster_pt = kp[match->trainIdx].pt;
 
 					line(cframe, cluster_pt, cluster_pt, Scalar(255, 255, 0), 2);
-					/* to_v.push_back(cluster_pt); */
-					/* from_v.push_back(query_kp[match->queryIdx].pt); */
+					to_v.push_back(cluster_pt);
+					from_v.push_back(query_kp[match->queryIdx].pt);
 
 					{
 						float x = cluster_pt.x;
@@ -302,12 +314,15 @@ int main(void) {
 
 				if (xmax - xmin < 5.0f) continue;
 
-				/* Mat h = findHomography(from_v, to_v, CV_LMEDS); */
+				Mat h = findHomography(from_v, to_v, CV_LMEDS);
 
-				/* const double det = h.at<double>(0,0)*h.at<double>(1,1) - \ */
-				/* 									 h.at<double>(1,0)*h.at<double>(0,1); */ 
+				if (!h.rows) continue;
 
-				/* if (abs(det) > 0.5) continue; */
+				const double det = h.at<double>(0,0)*h.at<double>(1,1) - \
+													 h.at<double>(1,0)*h.at<double>(0,1); 
+
+				/* if ( abs(det) > 1 ) continue; */
+				if ( det < 0 || det > 0.05 ) continue;
 
 				rectangle(cframe,
 						/* Point2f(xmin, cluster->min), */

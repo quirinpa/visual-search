@@ -428,6 +428,28 @@ avl_insert(
 	return child;
 }
 
+void *
+avl_find(
+		avl_t *root,
+		void *key,
+		int (*cmp)(void*, void*))
+{
+	if (root) {
+		avl_t *curr = root;
+
+		do { 
+			int cmpr = cmp(key, curr->key);
+
+			if (cmpr > 0) curr = curr->right;
+			else if (cmpr < 0) curr = curr->left;
+			else return curr->data;
+
+		} while (curr);
+	}
+
+	return NULL;
+}
+
 /* static avlnode_t * */
 /* rebalance_del( */
 /*     avlnode_t *root, */

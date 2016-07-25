@@ -28,4 +28,6 @@ avl_t *avl_insert( avl_t*, void*, void*, avl_compare_gfp_t, FILE*);
 avl_t *avl_insert( avl_t*, void*, void*, avl_compare_gfp_t);
 #endif
 
+void * avl_find(avl_t*, void *, int (*cmp)(void*, void*));
+
 #endif
