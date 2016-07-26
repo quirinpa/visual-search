@@ -32,21 +32,21 @@ static bool_t compare_float_ptrs(float *a, float *b) {
 	return *b > *a;
 }
 
-/* how to reduce avl mem transfer? if it is a vector, pre-allocate
- * positions close to avl (array of DMatch values, local cache),
- * and use.indexes to access that array. Or something. But that
- * requires clusters to reference to them. So have a avl_vec_insert
- * that does that then calls avl_insert for each element? Meanwhile... */
-template<typename putMatch_GKEY>
-__inline__
-static avl_t*
-putMatch(avl_t* t, DMatch *match, putMatch_GKEY gkey) {
-	DMatch *copy = (DMatch*) malloc(sizeof(DMatch));
-	memcpy(copy, match, sizeof(DMatch));
+/* /1* how to reduce avl mem transfer? if it is a vector, pre-allocate */
+/*  * positions close to avl (array of DMatch values, local cache), */
+/*  * and use.indexes to access that array. Or something. But that */
+/*  * requires clusters to reference to them. So have a avl_vec_insert */
+/*  * that does that then calls avl_insert for each element? Meanwhile... *1/ */
+/* template<typename putMatch_GKEY> */
+/* __inline__ */
+/* static avl_t* */
+/* putMatch(avl_t* t, DMatch *match, putMatch_GKEY gkey) { */
+/* 	DMatch *copy = (DMatch*) malloc(sizeof(DMatch)); */
+/* 	memcpy(copy, match, sizeof(DMatch)); */
 
-	return avl_insert(t, copy, (void*) gkey(copy),
-										(avl_compare_gfp_t) compare_float_ptrs); /* FIXME */
-}
+/* 	return avl_insert(t, copy, (void*) gkey(copy), */
+/* 										(avl_compare_gfp_t) compare_float_ptrs); /1* FIXME *1/ */
+/* } */
 
 #include <map>
 #define use_knn false
@@ -186,7 +186,6 @@ re_cluster(
 	fifo_t *result = new_fifo();
 
 	while (source->top) {
-		/* cluster_t *cluster = (cluster_t*) fifo_pop(source); */
 		avl_t *cluster_avl = (avl_t*) fifo_pop(source);
 
 		get_clusters(result, cluster_avl, min_dist, min_elements,
@@ -197,17 +196,6 @@ re_cluster(
 	return result;
 }
 
-/* static void */
-/* drawCluster(Mat dest, fifo_t *cluster) */
-/* { */
-/* 	while (cluster->top) { */
-/* 		avl_t *cluster = (avl_t*) fifo_pop(cluster); */
-/* 		double min = avl_min(cluster), max = avl_max(cluster); */
-/* 		line(dest, Point2f(min, max, Scalar(255, 0, 0), 4); */
-/* 	} */
-/* } */
-
-/* int main(int argc, char **argv) { */
 /* #include <time.h> */
 int main(void) {
 	Mat query = imread("resources/ss.png");
@@ -295,7 +283,7 @@ int main(void) {
 		/* fputs("\nGENERATING EUCL CLUSTERS SORTED BY X", stderr); */
 		/* fifo_t *eucl_clusters_x = new_fifo(); */
 
-		const int MIN_P = 3;
+		const int MIN_P = 10;
 		const float MAX_XY_DIST = .03f,
 					PX_MAX_XY_DIST = MAX_XY_DIST * (float)cframe.cols;
 
@@ -311,24 +299,10 @@ int main(void) {
 		get_clusters(x_clusters_y, cross_x_avl, PX_MAX_XY_DIST, MIN_P,
 				(avl_compare_gfp_t) compare_float_ptrs,
 				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.y; });
-		/* 		(avl_compare_gfp_t) compare_float_ptrs, */
-		/* 		[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.x; }); */
-
-		/* fifo_t *x_clusters_y = re_cluster(crossl_clusters_x, PX_MAX_XY_DIST, MIN_P, */
-		/* 		[&](DMatch *data) ->float* { return &kp[data->trainIdx].pt.y; }); */
-
-		/* /1* fputs("\nGENERATING X CLUSTERS SORTED BY Y", stderr); *1/ */
-		/* fifo_t *x_clusters_y = re_cluster(eucl_clusters_x, PX_MAX_XY_DIST, MIN_P, */
-		/* 		[&](DMatch *data) ->float* { return &kp[data->trainIdx].pt.y; }); */
 
 		/* fputs("\nGENERATING Y CLUSTERS SORTED BY Y", stderr); */
 		fifo_t *y_clusters_y = re_cluster(x_clusters_y, PX_MAX_XY_DIST, MIN_P,
 				[&](DMatch *data) -> float* { return &kp[data->trainIdx].pt.y; });
-
-		/* { */
-		/* 	fifo_node_t **top = &y_clusters_y->top; */
-			
-		/* } */
 
 		{
 			fifo_node_t **top = &y_clusters_y->top;
@@ -337,60 +311,43 @@ int main(void) {
 			while (*top) {
 				avl_t *cluster_avl = (avl_t*) fifo_pop(y_clusters_y);
 
-				vector<Point2f> from_v, to_v;
-
 				size_t n_points = 0;
+
+				float ymin = *(float*) avl_min(cluster_avl)->key,
+							ymax = *(float*) avl_max(cluster_avl)->key;
+
+				if (ymax - ymin < 3.0f) continue;
+
+				float	xmin = (float) cframe.cols, xmax = 0;
+				/* vector<Point2f> from_v, to_v; */
 
 				avl_iot(cluster_avl, [&] (avl_t* avlnode) {
 					DMatch *match = (DMatch*) avlnode->data;
 					Point2f cluster_pt = kp[match->trainIdx].pt;
 
 					line(cframe, cluster_pt, cluster_pt, Scalar(255, 255, 0), 2);
-					to_v.push_back(cluster_pt);
-					from_v.push_back(query_kp[match->queryIdx].pt);
+					/* to_v.push_back(cluster_pt); */
+					/* from_v.push_back(query_kp[match->queryIdx].pt); */
+
+					{
+						float x = cluster_pt.x;
+						if (x < xmin) xmin = x;
+						if (x > xmax) xmax = x;
+					}
 
 					n_points++;
 				});
 
+				if (xmax - xmin < 3.0f) continue;
 
-				vector<unsigned char> inliersMask;
-				/* Mat h = findHomography(from_v, to_v, CV_RANSAC, 3, inliersMask); */
-				Mat h = findHomography(from_v, to_v, CV_LMEDS, 3, inliersMask);
+				/* Mat h = findHomography(from_v, to_v, CV_RANSAC); */
+				/* if (!h.rows) continue; */
 
-				if (!h.rows) continue;
+				/* const double det = h.at<double>(0,0)*h.at<double>(1,1) - \ */
+				/* 									 h.at<double>(1,0)*h.at<double>(0,1); */ 
 
-				const double det = h.at<double>(0,0)*h.at<double>(1,1) - \
-													 h.at<double>(1,0)*h.at<double>(0,1); 
-
-				/* if ( abs(det) > 1 ) continue; */
-				if ( det < 0 || det > 0.05 ) continue;
-
-				avl_t *final_avl = NULL;
-
-				float xmin = (float) cframe.cols, xmax = 0,
-							ymin = (float) cframe.rows, ymax = 0;
-
-				unsigned i = 0;
-				avl_iot(cluster_avl, [&] (avl_t* avlnode) {
-					DMatch *curr = (DMatch*) avlnode->data;
-					if (inliersMask[i++] == 1) {
-						Point2f cluster_pt = kp[curr->trainIdx].pt;
-						float x = cluster_pt.x, y = cluster_pt.y;
-
-						if (x < xmin) xmin = x;
-						if (x > xmax) xmax = x;
-						if (y < ymin) ymin = y;
-						if (y > ymax) ymax = y;
-
-						final_avl = avl_insert(final_avl, (void*) curr,
-							(void*) &cluster_pt.x,
-							(avl_compare_gfp_t) compare_float_ptrs);
-
-						line(cframe, cluster_pt, cluster_pt, Scalar(0, 0, 255), 2);
-					}
-				});
-
-				if (xmax - xmin < 3.0f || ymax - ymin < 3.0f) continue;
+				/* /1* if ( abs(det) > 1 ) continue; *1/ */
+				/* if ( det < 0 || det > 0.05 ) continue; */
 
 				rectangle(cframe,
 						/* Point2f(xmin, cluster->min), */
@@ -398,6 +355,7 @@ int main(void) {
 						Point2f(xmin, ymin),
 						Point2f(xmax, ymax),
 						Scalar(255, 0, 0), 1);
+
 
 				ostringstream convert;
 				convert << n_points;
