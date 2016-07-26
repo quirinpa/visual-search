@@ -15,8 +15,8 @@ using namespace cv;
 static const DescriptorMatcher *matcher = new FlannBasedMatcher(new flann::LshIndexParams(5, 24, 2));
 #else
 static const DescriptorMatcher *matcher = new BFMatcher(
-		/* NORM_HAMMING */
-		NORM_L2
+		NORM_HAMMING
+		/* NORM_L2 */
 		, use_cross_match
 		);
 #endif
@@ -199,12 +199,12 @@ re_cluster(
 /* #include <time.h> */
 int main(void) {
 	Mat query = imread("resources/ss.png");
-	Ptr<FeatureDetector> detector = BRISK::create();
+	Ptr<FeatureDetector> detector = ORB::create();
 
 	vector<KeyPoint> query_kp;
 	detector->detect(query, query_kp);
 
-	Ptr<DescriptorExtractor> extractor = BRISK::create();
+	Ptr<DescriptorExtractor> extractor = ORB::create();
 
 	Mat query_d;
 	extractor->compute(query, query_kp, query_d);
