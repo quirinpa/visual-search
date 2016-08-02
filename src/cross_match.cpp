@@ -9,7 +9,6 @@ using cv::DescriptorMatcher;
 
 #include <functional>
 using std::function;
-
 #define use_knn false
 #define knn_ratio 0.8f
 
@@ -64,29 +63,41 @@ using std::pair;
 #include "cross_match.hpp"
 #include <stdio.h>
 
+struct hash_crossmatch {
+	size_t operator()(const pair<int, int> &k) const {
+		size_t h1 = std::hash<int>()(k.first),
+					 h2 = std::hash<int>()(k.second);
+
+		return h1^h2;
+	}
+};
+
+struct equals_crossmatch {
+	bool operator()( const pair<int, int>& lhs, const pair<int, int>& rhs) const {
+		return (lhs.first == rhs.first) && (lhs.second == rhs.second);
+	}
+};
+
 multimap<float, DMatch>
 cross_match(
 		const DescriptorMatcher& matcher,
 		Mat d1, Mat d2,
 		vector<KeyPoint> train_kp )
 {
-	unordered_map<int, unordered_map<int, stack<DMatch>>> normal_map;
+	unordered_map<
+		pair<int, int>,
+		stack<DMatch>,
+		hash_crossmatch,
+		equals_crossmatch> normal_map;
 
 	MATCH (matcher, d1, d2, [&](const DMatch& match) {
-		normal_map[match.trainIdx][match.queryIdx].push(match);
+		normal_map[pair<int, int>(match.trainIdx, match.queryIdx)].push(match);
 	});
 
 	multimap<float, DMatch> result;
 
 	MATCH (matcher, d2, d1, [&](const DMatch& match) {
-		auto search = normal_map.find(match.queryIdx);
-		if (search == normal_map.end()) return;
-
-		auto sub_map = search->second;
-		auto search_sub = sub_map.find(match.trainIdx);
-		if (search_sub == sub_map.end()) return;
-
-		stack<DMatch>& s = search_sub->second;
+		register stack<DMatch>& s = normal_map[pair<int, int>(match.queryIdx, match.trainIdx)];
 
 		while (!s.empty()) {
 			result.insert( pair<float, DMatch>
