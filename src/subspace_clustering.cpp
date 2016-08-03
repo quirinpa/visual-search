@@ -13,14 +13,16 @@ using std::pair;
 using std::function;
 	
 static void
-subcluster_cluster_orderby_y (
+subcluster (
 	multimap<float, DMatch> parent,
 	const float min_distance,
 	const size_t min_elements,
-	const vector<KeyPoint>& train_kps,
-	function<void (multimap<float, DMatch>&)> cb )
+	function<void (DMatch&)> insert,
+	function<void (void)> save,
+ 	function<void (void)> cleanup	)
 {
-	multimap<float, DMatch> subcluster;
+	/* multimap<float, DMatch> subcluster; */
+	size_t size = 0;
 	float last_key = 0;
 
 	for (auto parent_it = parent.begin();
@@ -30,18 +32,20 @@ subcluster_cluster_orderby_y (
 
 		if (key - last_key > min_distance) {
 
-			if (subcluster.size() >= min_elements) cb(subcluster);
+			if (size >= min_elements) save();
 
-			subcluster.clear();
+			cleanup();
+			size = 0;
 		}
 
 		DMatch match = parent_it->second;
 
-		subcluster.insert(pair<float, DMatch>(train_kps[match.trainIdx].pt.y, match)); 
+		insert(match);
+		size++;
 		last_key = key;
 	}
 
-	if (subcluster.size() > min_elements) cb(subcluster);
+	if (size > min_elements) save();
 }
 
 #include <stack>
@@ -50,24 +54,28 @@ using std::stack;
 #include "subspace_clustering.hpp"
 #include <stdio.h>
 
-stack<multimap<float, DMatch>>
+void
 subspace_clustering (
 		const multimap<float, DMatch> x_megacluster,
 		const float min_distance,
 		const size_t min_elements,
-		const vector<KeyPoint>& train_kps )
+		const vector<KeyPoint>& train_kps,
+		function<void (DMatch&)> insert,
+		function<void (void)> save,
+	 	function<void (void)> cleanup	)
 {
-	stack<multimap<float, DMatch>> result;
+	multimap<float, DMatch> y_cluster;
 
-	subcluster_cluster_orderby_y(x_megacluster, min_distance, min_elements,
-			train_kps, [&](const multimap<float, DMatch>& x_subcluster) {
-				subcluster_cluster_orderby_y(x_subcluster, min_distance, min_elements,
-						train_kps, [&](const multimap<float, DMatch>& y_subcluster) {
-							result.push(y_subcluster);
-						});
+	cleanup();
+
+	subcluster(x_megacluster, min_distance, min_elements,
+			[&](DMatch& match) {
+				y_cluster.insert( pair <float, DMatch>
+					(train_kps[match.trainIdx].pt.y, match) );
+			}, [&]() {
+				subcluster(y_cluster, min_distance,
+						min_elements, insert, save, cleanup);
+			}, [&]() {
+				y_cluster.clear();
 			});
-
-	fprintf(stderr, "subspace clusters: %u\n", result.size());
-
-	return result;
 }

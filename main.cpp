@@ -60,49 +60,48 @@ int main(void) {
 		times += clock() - start;
 		n++;
 
-		stack<multimap<float, DMatch>> clusters =
-			subspace_clustering(cross_match(matcher, query_d, d, kp),
-					.03f * (float) cframe.cols, 10, kp);
+		size_t n_clusters = 0, size;
+		float ymin, xmin, ymax, xmax;
 
-		while (!clusters.empty()) {
-			multimap<float, DMatch> cluster = clusters.top();
-			clusters.pop();
+		subspace_clustering(cross_match(matcher, query_d, d, kp),
+				.02f * (float) cframe.cols, 10, kp,
+				[&](DMatch& match) {
+					Point2f pt = kp[match.trainIdx].pt;
 
-			float ymin = cluster.begin()->first,
-						ymax = (--cluster.end())->first;
+					{
+						register float x = pt.x, y = pt.y;
 
-			if (ymax - ymin < 3.0f) continue;
+						if (x < xmin) xmin = x;
+						else if (x > xmax) xmax = x;
 
-			float xmin = (float) cframe.cols, xmax = 0;
+						if (y < ymin) ymin = y;
+						else if (y > ymax) ymax = y;
+					}
+					
+					line(cframe, pt, pt, Scalar(255, 255, 0), 2);
+					size++;
 
-			for (multimap<float, DMatch>::iterator map_it = cluster.begin();
-					map_it != cluster.end();
-					++map_it)
-			{
-				DMatch match = map_it->second;
-				Point2f cluster_pt = kp[match.trainIdx].pt;
+				}, [&]() {
+					if (xmax - xmin > 3.0f && ymax - ymin > 3.0f) {
+					// good cluster
+						rectangle(cframe, Point2f(xmin, ymin), Point2f(xmax, ymax), Scalar(255, 0, 0), 1);
 
-				line(cframe, cluster_pt, cluster_pt, Scalar(255, 255, 0), 2);
+						{
+							ostringstream convert;
+							convert << size;
+							putText(cframe, convert.str(), Point2f(xmax + 5, ymin), FONT_HERSHEY_PLAIN, .9, Scalar(0, 0, 255));
+						}
 
-				{
-					float x = cluster_pt.x;
-					if (x < xmin) xmin = x;
-					if (x > xmax) xmax = x;
-				}
-			}
+						n_clusters++;
+					}
+				}, [&]() {
+					size = 0;
+					ymin = (float) cframe.rows;
+					xmin = (float) cframe.cols;
+					ymax = xmax = 0;
+				});
 
-			if (xmax - xmin < 3.0f) continue;
-
-			rectangle(cframe, Point2f(xmin, ymin), Point2f(xmax, ymax), Scalar(255, 0, 0), 1);
-
-			{
-				ostringstream convert;
-				convert << cluster.size();
-				putText(cframe, convert.str(), Point2f(xmax + 5, ymin), FONT_HERSHEY_PLAIN, .9, Scalar(0, 0, 255));
-			}
-
-		}
-
+		fprintf(stderr, "valid clusters: %u\n", n_clusters);
 		imshow("d", cframe);
 
 	} while (waitKey(1)!='\x1b');
