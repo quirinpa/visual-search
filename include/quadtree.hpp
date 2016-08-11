@@ -70,8 +70,7 @@ class QTreeBranch : QTreeNode {
 
 				branch->leaves ^= 1<<d_dir;
 
-				branch =
-					((QTreeBranch<T> *) branch->nodes[ d_dir ] =
+				branch = ((QTreeBranch<T> *) branch->nodes[ d_dir ] =
 					 (void*) new QTreeBranch<T>());
 
 				pos += hsize;
@@ -108,13 +107,49 @@ class QTreeLeaf {
 		}
 }
 
-#include <functional>
+/* template<class T> */
+/* typedef struct { */
+/* 	T data; */
+/* 	Point<float> coords; */
+/* } QT_leaf; */
+
+/* template<class T> */
+/* class QT_section { */
+/* 	private: */
+/* 		list<QT_section<T>> subsections; */
+/* 		list<QT_leaf<T>> leaves; */
+/* 		int max_leaves; */
+/* 		float max_dist; */
+/* 		Point<int> size, pos; */
+
+/* 	public: */
+/* 		QT_section( */
+/* 				Point<int> size, */
+/* 			 	Point<int> pos, */
+/* 			 	float max_dist, */
+/* 			 	float max_leaves ) */
+/* 	 	{ */
+/* 			this.max_leaves = max_leaves; */
+/* 			this.max_dist = max_dist; */
+/* 			this.size = size; */
+/* 			this.pos = pos; */
+/* 		} */
+
+/* 		merge(QT_section<T> &b) { */
+/* 			this.leaves; */
+
+/* 		} */
+
+/* 		insert(T data, Point<float> coords) { */
+
+/* 		} */
+/* } */
+
 template<class T>
 class Quadtree {
 	private:
-		Point<int> size;
-		bool is_root_leaf;
-		void *root;
+		Point<int> size, pos;
+		list<int> points;
 
 	public:
 		Quadtree(Point<int> size) {

@@ -3,7 +3,6 @@
 
 #include <opencv2/opencv.hpp>
 #include <functional>
-#include <stack>
 #include <map>
 
 void

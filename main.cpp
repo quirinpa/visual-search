@@ -7,7 +7,11 @@ using namespace cv;
 
 #include "cross_match.hpp"
 #include "subspace_clustering.hpp"
+#include "roundhash.h"
 #include <stdio.h>
+
+#define CLUSTERING_MIN_POINTS 10U
+#define CLUSTERING_MAX_DIST 10.0f
 
 int main(void) {
 	Mat query = imread("resources/ss.png");
@@ -60,12 +64,33 @@ int main(void) {
 		times += clock() - start;
 		n++;
 
+		RHC<DMatch> rh(Point2i(cframe.cols, cframe.rows), CLUSTERING_MAX_DIST);
+
+		subspace_clustering(cross_match(matcher, query_d, d, kp),
+				CLUSTERING_MAX_DIST, CLUSTERING_MIN_POINTS, kp,
+				[&](DMatch& match) {
+					Point2f pt = kp[match.trainIdx].pt;
+					rh.insert(match, Point2f(pt.x, pt.y));
+				}, [&]() {
+				}, [&]() {
+				});
+
 		size_t n_clusters = 0, size;
 		float ymin, xmin, ymax, xmax;
 
-		subspace_clustering(cross_match(matcher, query_d, d, kp),
-				.02f * (float) cframe.cols, 10, kp,
-				[&](DMatch& match) {
+		size = 0;
+		ymin = (float) cframe.rows;
+		xmin = (float) cframe.cols;
+		ymax = xmax = 0;
+
+		for(float x = .0f; x < (float) cframe.cols; x+=CLUSTERING_MAX_DIST)
+			line(cframe, Point2f(x, .0f), Point2f(x, (float)cframe.rows), Scalar(0, 0, 255), 1);
+
+
+		for(float y = .0f; y < (float) cframe.rows; y+=CLUSTERING_MAX_DIST)
+			line(cframe, Point2f(.0f, y), Point2f((float)cframe.cols, y), Scalar(0, 0, 255), 1);
+
+		rh.cluster([&](DMatch& match) {
 					Point2f pt = kp[match.trainIdx].pt;
 
 					{
@@ -80,10 +105,13 @@ int main(void) {
 					
 					line(cframe, pt, pt, Scalar(255, 255, 0), 2);
 					size++;
-
+					
 				}, [&]() {
-					if (xmax - xmin > 3.0f && ymax - ymin > 3.0f) {
-					// good cluster
+					/* float width = xmax - xmin, height = ymax - ymin; */
+
+					if (size != 1) fprintf(stderr, "%u/", size);
+
+					/* if (width > 3.0f && height > 3.0f) { */
 						rectangle(cframe, Point2f(xmin, ymin), Point2f(xmax, ymax), Scalar(255, 0, 0), 1);
 
 						{
@@ -93,13 +121,14 @@ int main(void) {
 						}
 
 						n_clusters++;
-					}
-				}, [&]() {
+					/* } */
+
 					size = 0;
 					ymin = (float) cframe.rows;
 					xmin = (float) cframe.cols;
 					ymax = xmax = 0;
 				});
+
 
 		fprintf(stderr, "valid clusters: %u\n", n_clusters);
 		imshow("d", cframe);
