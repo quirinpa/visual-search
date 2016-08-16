@@ -1,5 +1,3 @@
-EXE := test
-
 IDIR := include
 SDIR := src
 
@@ -12,13 +10,17 @@ CXXFLAGS := $(DEBUG) -I$(IDIR) -Wall -Wextra -pedantic -Wshadow -Wpointer-arith 
 	-Wcast-align -Wwrite-strings -Wmissing-declarations -Winline -Wno-long-long \
 	-Wuninitialized -Wconversion -Wredundant-decls -Wdouble-promotion
 
-CFLAGS := -ansi -Wnested-externs -Wstrict-prototypes -Wmissing-prototypes
+CFLAGS := -ansi -Wnested-externs -Wstrict-prototypes -Wmissing-prototypes $(CXXFLAGS)
 
 .PHONY: all clean todolist
 
-all: $(EXE)
+all: match cap_test
 
-$(EXE): cross_match.o subspace_clustering.o main.o
+match: cross_match.o subspace_clustering.o get_match_buckets.o match.o
+	@echo G++ $@
+	@$(CXX) -o $@ $^ $(CXXFLAGS) `pkg-config --libs opencv`
+
+cap_test: cross_match.o subspace_clustering.o cap_test.o
 	@echo G++ $@
 	@$(CXX) -o $@ $^ $(CXXFLAGS) `pkg-config --libs opencv`
 

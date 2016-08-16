@@ -15,8 +15,8 @@ using std::function;
 static void
 subcluster (
 	multimap<float, DMatch> parent,
-	const float min_distance,
-	const size_t min_elements,
+	float max_distance,
+	size_t min_elements,
 	function<void (DMatch&)> insert,
 	function<void (void)> save,
  	function<void (void)> cleanup	)
@@ -30,7 +30,7 @@ subcluster (
 	{
 		float key = parent_it->first;
 
-		if (key - last_key > min_distance) {
+		if (key - last_key > max_distance) {
 
 			if (size >= min_elements) save();
 
@@ -48,18 +48,13 @@ subcluster (
 	if (size > min_elements) save();
 }
 
-#include <stack>
-using std::stack;
-
 #include "subspace_clustering.hpp"
-#include <stdio.h>
 
-void
-subspace_clustering (
-		const multimap<float, DMatch> x_megacluster,
-		const float min_distance,
-		const size_t min_elements,
-		const vector<KeyPoint>& train_kps,
+void subspace_clustering (
+		multimap<float, DMatch> x_megacluster,
+		float max_distance,
+		size_t min_elements,
+		vector<KeyPoint>& train_kps,
 		function<void (DMatch&)> insert,
 		function<void (void)> save,
 	 	function<void (void)> cleanup	)
@@ -68,12 +63,12 @@ subspace_clustering (
 
 	cleanup();
 
-	subcluster(x_megacluster, min_distance, min_elements,
+	subcluster(x_megacluster, max_distance, min_elements,
 			[&](DMatch& match) {
 				y_cluster.insert( pair <float, DMatch>
 					(train_kps[match.trainIdx].pt.y, match) );
 			}, [&]() {
-				subcluster(y_cluster, min_distance,
+				subcluster(y_cluster, max_distance,
 						min_elements, insert, save, cleanup);
 			}, [&]() {
 				y_cluster.clear();

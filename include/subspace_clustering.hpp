@@ -7,10 +7,10 @@
 
 void
 subspace_clustering (
-		const std::multimap<float, cv::DMatch> x_megacluster,
-		const float min_distance,
-		const size_t min_elements,
-		const std::vector<cv::KeyPoint>& train_kps,
+		std::multimap<float, cv::DMatch> x_megacluster,
+		float max_distance,
+		size_t min_elements,
+		std::vector<cv::KeyPoint>& train_kps,
 		std::function<void (cv::DMatch&)> insert,
 		std::function<void (void)> save,
 		std::function<void (void)> cleanup );
