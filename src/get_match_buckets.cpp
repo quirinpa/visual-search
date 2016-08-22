@@ -1,13 +1,3 @@
-__inline__ static float max(float a, float b) {
-	if (a > b) return a;
-	return b;
-}
-
-__inline__ static float min(float a, float b) {
-	if (a < b) return a;
-	return b;
-}
-
 #include "subspace_clustering.hpp"
 #include "get_match_buckets.hpp"
 
@@ -20,6 +10,10 @@ using cv::DMatch;
 using std::list;
 #include <stack>
 using std::stack;
+
+#include <algorithm>
+using std::min;
+using std::max;
 
 list<stack<DMatch>> get_match_buckets(
 		std::multimap<float, DMatch> x_megacluster,
@@ -46,7 +40,7 @@ list<stack<DMatch>> get_match_buckets(
 				cv::Point2f pt = train_kps[match.trainIdx].pt;
 
 				{
-					register float x = pt.x, y = pt.y;
+					float x = pt.x, y = pt.y;
 
 					minx = min(x, minx);
 					miny = min(y, miny);

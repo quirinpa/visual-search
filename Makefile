@@ -14,13 +14,18 @@ CFLAGS := -ansi -Wnested-externs -Wstrict-prototypes -Wmissing-prototypes $(CXXF
 
 .PHONY: all clean todolist
 
-all: match cap_test
+EXES := cap_test match
 
-match: cross_match.o subspace_clustering.o get_match_buckets.o match.o
+all: $(EXES) convert
+
+cap_test: cross_match.o subspace_clustering.o
+match: cross_match.o subspace_clustering.o get_match_buckets.o
+
+convert: convert.cpp
 	@echo G++ $@
-	@$(CXX) -o $@ $^ $(CXXFLAGS) `pkg-config --libs opencv`
+	@$(CXX) -o $@ $^ $(CXXFLAGS) `pkg-config --libs --cflags opencv`
 
-cap_test: cross_match.o subspace_clustering.o cap_test.o
+$(EXES): % : %.o
 	@echo G++ $@
 	@$(CXX) -o $@ $^ $(CXXFLAGS) `pkg-config --libs opencv`
 
@@ -29,7 +34,7 @@ cap_test: cross_match.o subspace_clustering.o cap_test.o
 	@$(CXX) -c $< $(CXXFLAGS) -std=c++11 `pkg-config --cflags opencv`
 
 clean:
-	-@$(RM) -r $(wildcard output* *.o $(EXE) proj.zip tags)
+	-@$(RM) -r $(wildcard output* *.o $(EXES) convert proj.zip tags)
 
 todolist:
 	-@for file in $(wildcard $(SRC:%=$(SDIR)/%) $(IDIR)/*/*.h $(IDIR)/*.h); do\

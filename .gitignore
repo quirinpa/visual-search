@@ -1,6 +1,9 @@
 .git/**
 tags
 test
+query
+train
+gmon.out
 *.o
 .*.swp
 .*.swo

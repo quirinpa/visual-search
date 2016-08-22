@@ -10,11 +10,15 @@ static
 vector<KeyPoint> read_keypoints(FILE *inp)
 {
 	size_t n;
-	fread(&n, 1, sizeof(size_t), inp);
+	fread(&n, sizeof(size_t), 1, inp);
+	/* fprintf(stderr, "rk: %u\n", n); */
 
-	vector<KeyPoint> kp(n);
-	for (size_t i = 0; i < n; i++)
-		fread(&kp[i], 1, sizeof(KeyPoint), inp);
+	vector<KeyPoint> kp;
+	for (size_t i = 0; i < n; i++) {
+		KeyPoint *pt = new KeyPoint();
+		fread(pt, sizeof(KeyPoint), 1, inp);
+		kp.push_back(*pt);
+	} /* TODO cleanup */
 
 	return kp;
 }
@@ -24,16 +28,18 @@ using cv::Mat;
 static
 Mat read_descriptors(FILE *inp)
 {
-	size_t cols, rows;
-	fread(&cols, 1, sizeof(size_t), inp);
-	fread(&rows, 1, sizeof(size_t), inp);
-	Mat descriptors(cols, rows, CV_64FC1);
+	int cols, rows;
+	fread(&cols, sizeof(int), 1, inp);
+	fread(&rows, sizeof(int), 1, inp);
 
-	for (size_t x = 0; x < cols; x++)
-		for (size_t y = 0; y < rows; y++)
-			fread(&descriptors.at<double>(x, y), 1, sizeof(double), inp);
+	int size = cols*rows;
+	/* fprintf(stderr, "rd: %d %d %d\n", cols, rows, size); */
+	unsigned char *buffer = (unsigned char*) malloc(size*sizeof(char));
 
-	return descriptors;
+	fread(buffer, sizeof(char), size, inp);
+	/* fprintf(stderr, "%s\n", buffer); */
+
+	return Mat(rows, cols, CV_8UC1, buffer);
 }
 
 #include <argp.h>
@@ -48,10 +54,8 @@ static char doc[] = "Match query and train descriptors to identify if"\
 
 /* #include <stdbool.h> */
 typedef struct {
-	char *query_filename,
-			 **train_filenames; 
-
-	size_t train_files;
+	char *query_path,
+			 *train_path; 
 
 	enum cv::NormTypes norm_type;
 
@@ -59,7 +63,8 @@ typedef struct {
 			 cross_match,
 			 show_bounds;
 
-	size_t clustering_min_points;
+	size_t clustering_min_points,
+				 homography_attempts;
 
 	float clustering_max_dist,
 				subspace_min_width,
@@ -76,6 +81,7 @@ static struct argp_option options[] = {
 	{"clustering-min-points", 'p', "size_t", 0, "Minimum number of points in a cluster (10U)", 0},
 	{"subspace-min-width", 'w', "float", 0, "Minimum width of a valid subspace cluster (10.0f)", 0},
 	{"subspace-min-height", 'h', "float", 0, "Minimum height of a valid subspace cluster (10.0f)", 0},
+	{"homography-attempts", 'a', "size_t", 0, "How many times should the bucket-points-homography loop repeat? (3)", 0},
 	{0, 0, 0, 0, 0, 0}
 };
 
@@ -83,6 +89,10 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 	arguments_t *arguments = (arguments_t*) state->input;
 
 	switch (key) {
+		case 'a':
+			arguments->homography_attempts = (size_t) strtol(arg, NULL, 10);
+			break;
+
 		case 'R':
 			arguments->ratio_test = arg && arg[0] == '1';
 			break;
@@ -120,11 +130,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 			break;
 
 		case ARGP_KEY_ARG:
-			arguments->query_filename = arg;
-			{
-				register size_t i = state->next;
-				arguments->train_files = state->argc - i;
-				arguments->train_filenames = &state->argv[i];
+			if (!arguments->query_path) {
+				arguments->query_path = arg;
+				arguments->train_path = state->argv[state->next];
 			}
 			break;
 
@@ -141,7 +149,6 @@ __inline__ static arguments_t
 get_arguments(int argc, char **argv)
 {
 	arguments_t args;
-	args.train_files = 0;
 	args.cross_match = true;
 	args.ratio_test = false;
 	args.show_bounds = false;
@@ -149,12 +156,13 @@ get_arguments(int argc, char **argv)
 	args.clustering_min_points = 10U;
 	args.clustering_max_dist = 5.0f;
 	args.subspace_min_height = args.subspace_min_width = 10.0f;
+	args.homography_attempts = 3U;
+	args.query_path = NULL;
 
 	argp_parse(&argp, argc, argv, 0, 0, &args);
 
 	return args;
-}
-
+} 
 using cv::DMatch;
 
 #include "cross_match.hpp"
@@ -165,39 +173,104 @@ using std::stack;
 #include <list>
 using std::list;
 
+#include <algorithm>
+using std::min;
+using std::max;
+
 int main(int argc, char **argv) {
 	arguments_t args = get_arguments(argc, argv);
+
+	float min_width = args.subspace_min_width,
+				min_height = args.subspace_min_height,
+				max_dist = args.clustering_max_dist;
+
+	size_t min_points = args.clustering_min_points;
 
 	static const cv::BFMatcher matcher( args.norm_type, false );
 
 	/* vector<KeyPoint> query_kp = read_keypoints(); */
-	FILE *query_f = fopen(args.query_filename, "rb");
+	FILE *query_f = fopen(args.query_path, "rb");
+	/* fseek(query_f, sizeof(size_t) << 1, SEEK_SET); */
+	vector<KeyPoint> query_kp = read_keypoints(query_f);
 	Mat query_d = read_descriptors(query_f);
 	fclose(query_f);
 
-	for (size_t i = 0; i < args.train_files; i++) {
-		FILE *train_f = fopen(args.train_filenames[i], "rb");
+	FILE *train_f = fopen(args.train_path, "rb");
+	size_t db_n;
+	fread(&db_n, sizeof(size_t), 1, train_f);
+	/* fprintf(stderr, "rn: %u\n", db_n); */
 
-		size_t c;
-		fread(&c, 1, sizeof(size_t), train_f);
+	for (size_t i = 0; i < db_n; i++) {
+		/* fprintf(stderr, "train #%u\n", i); */
+		int width, height;
+		fread(&width, sizeof(int), 1, train_f);
+		fread(&height, sizeof(int), 1, train_f);
+	
+		vector<KeyPoint> kp = read_keypoints(train_f);
+		Mat d = read_descriptors(train_f);
 
-		for (size_t j = 0; j < c; j++) {
-			float width, height;
-			fread(&width, 1, sizeof(float), train_f);
-			fread(&height, 1, sizeof(float), train_f);
+		list<stack<DMatch>> match_buckets = get_match_buckets(
+				cross_match(matcher, query_d, d, kp),
+				max_dist, min_points, kp, min_width, min_height,
+				(float) width + .5f,
+				(float) height + .5f );
 
-			vector<KeyPoint> kp = read_keypoints(train_f);
-			Mat d = read_descriptors(train_f);
+		/* fprintf(stderr, "\t%u buckets.\n", match_buckets.size()); */
 
-			list<stack<DMatch>> match_buckets = get_match_buckets(
-					cross_match(matcher, query_d, d, kp),
-					args.clustering_max_dist, args.clustering_min_points, kp,
-					args.subspace_min_width, args.subspace_min_height, width, height );
+		bool not_found;
+		size_t w = 0;
+		do {
+			/* fprintf(stderr, "\tw: %u\n", w); */
 
+			size_t ftsize = 0;
+
+			for (auto it = match_buckets.begin(); it != match_buckets.end(); it++)
+				ftsize += min(min_points, (*it).size());
+
+			/* fprintf(stderr, "\tftsize: %u\n", ftsize); */
+
+			if (ftsize < 10) break;
+
+			vector<cv::Point2f> from(ftsize), to(ftsize);
+			size_t id = 0;
+
+			for (auto it = match_buckets.begin(); it != match_buckets.end(); it++) {
+				stack<DMatch> s = *it;
+
+				for (size_t k = 0; k < min(min_points, s.size()); k++) {
+					DMatch match = s.top();
+					from[id] = query_kp[match.queryIdx].pt;
+					to[id] = kp[match.trainIdx].pt;
+
+					s.pop();
+					id++;
+				}
+			}
+
+			/* vector<unsigned char> inliersMask(ftsize); */
+			/* Mat h = findHomography(from, to, cv::CV_RANSAC, 1, inliersMask); */
+			Mat h = findHomography(from, to, CV_RANSAC, 1);
+
+			const double det = h.at<double>(0,0)*h.at<double>(1,1) - \
+												 h.at<double>(1,0)*h.at<double>(0,1); 
+
+			/* fprintf(stderr, "\tdet: %f\n", det); */
+			not_found = det < 0 || fabs(det) > 1;
+			w++;
+
+		} while (not_found && w < args.homography_attempts);
+
+		if (not_found) while (fgetc(train_f));
+		else {
+			char c;
+
+			while ((c = (char)fgetc(train_f))) putchar(c);
+			putchar('\n');
 		}
 
-		fclose(train_f);
 	}
+
+	fclose(train_f);
 
 	return 0;
 }

@@ -108,6 +108,6 @@ cross_match(
 
 	});
 
-	fprintf(stderr, "cross-checked matches: %u\n", result.size());
+	/* fprintf(stderr, "cross-checked matches: %u\n", result.size()); */
 	return result;
 }
