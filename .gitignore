@@ -1,9 +1,13 @@
 .git/**
+cap_test
+convert
+match
 tags
 test
 query
 train
 gmon.out
+starbucks/**
 *.o
 .*.swp
 .*.swo
