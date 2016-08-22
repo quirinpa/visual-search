@@ -43,7 +43,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 			break;
 
 		case 'o':
-			arguments->out = arg + 1;
+			arguments->out = arg;
 			break;
 
 		case 'e':
