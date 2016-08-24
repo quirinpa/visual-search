@@ -7,18 +7,14 @@ using cv::KeyPoint;
 #include "stdio.h"
 
 static
-vector<KeyPoint> read_keypoints(FILE *inp)
+vector<KeyPoint> read_keypoints(FILE *inp, bool v)
 {
 	size_t n;
 	fread(&n, sizeof(size_t), 1, inp);
-	/* fprintf(stderr, "rk: %u\n", n); */
+	if (v) fprintf(stderr, "rk: %lu\n", n);
 
-	vector<KeyPoint> kp;
-	for (size_t i = 0; i < n; i++) {
-		KeyPoint *pt = new KeyPoint();
-		fread(pt, sizeof(KeyPoint), 1, inp);
-		kp.push_back(*pt);
-	} /* TODO cleanup */
+	vector<KeyPoint> kp(n);
+	fread(&kp[0], sizeof(KeyPoint), n, inp);
 
 	return kp;
 }
@@ -26,18 +22,17 @@ vector<KeyPoint> read_keypoints(FILE *inp)
 using cv::Mat;
 
 static
-Mat read_descriptors(FILE *inp)
+Mat read_descriptors(FILE *inp, bool v)
 {
 	int cols, rows;
 	fread(&cols, sizeof(int), 1, inp);
 	fread(&rows, sizeof(int), 1, inp);
 
 	int size = cols*rows;
-	/* fprintf(stderr, "rd: %d %d %d\n", cols, rows, size); */
+	if (v) fprintf(stderr, "rd: %d %d %d\n", cols, rows, size);
 	unsigned char *buffer = (unsigned char*) malloc(size*sizeof(char));
 
 	fread(buffer, sizeof(char), size, inp);
-	/* fprintf(stderr, "%s\n", buffer); */
 
 	return Mat(rows, cols, CV_8UC1, buffer);
 }
@@ -61,7 +56,8 @@ typedef struct {
 
 	bool ratio_test,
 			 cross_match,
-			 show_bounds;
+			 show_bounds,
+			 v;
 
 	size_t clustering_min_points,
 				 homography_attempts;
@@ -73,6 +69,7 @@ typedef struct {
 } arguments_t;
 
 static struct argp_option options[] = {
+	{"verbose", 'v', NULL, 0, "show debug information", 0},
 	{"ratio-test", 'R', "bool", 0, "Enable David Lowe's ratio test, KNN k=2. (0)", 0},
 	{"cross-match", 'c', "bool", 0, "Enable cross-matching (1)", 0},
 	{"show-bounds", 'b', "bool", 0, "Output rectangle coordinates. (0)", 0},
@@ -89,6 +86,10 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 	arguments_t *arguments = (arguments_t*) state->input;
 
 	switch (key) {
+		case 'v':
+			arguments->v = true;
+			break;
+
 		case 'a':
 			arguments->homography_attempts = (size_t) strtol(arg, NULL, 10);
 			break;
@@ -150,8 +151,7 @@ get_arguments(int argc, char **argv)
 {
 	arguments_t args;
 	args.cross_match = true;
-	args.ratio_test = false;
-	args.show_bounds = false;
+	args.ratio_test = args.show_bounds = args.v = false;
 	args.norm_type = cv::NORM_L2;
 	args.clustering_min_points = 10U;
 	args.clustering_max_dist = 5.0f;
@@ -188,26 +188,24 @@ int main(int argc, char **argv) {
 
 	static const cv::BFMatcher matcher( args.norm_type, false );
 
-	/* vector<KeyPoint> query_kp = read_keypoints(); */
 	FILE *query_f = fopen(args.query_path, "rb");
-	/* fseek(query_f, sizeof(size_t) << 1, SEEK_SET); */
-	vector<KeyPoint> query_kp = read_keypoints(query_f);
-	Mat query_d = read_descriptors(query_f);
+	vector<KeyPoint> query_kp = read_keypoints(query_f, args.v);
+	Mat query_d = read_descriptors(query_f, args.v);
 	fclose(query_f);
 
 	FILE *train_f = fopen(args.train_path, "rb");
 	size_t db_n;
 	fread(&db_n, sizeof(size_t), 1, train_f);
-	/* fprintf(stderr, "rn: %u\n", db_n); */
+	if (args.v) fprintf(stderr, "rn: %lu\n", db_n);
 
 	for (size_t i = 0; i < db_n; i++) {
-		/* fprintf(stderr, "train #%u\n", i); */
+		if (args.v) fprintf(stderr, "train #%lu\n", i);
 		int width, height;
 		fread(&width, sizeof(int), 1, train_f);
 		fread(&height, sizeof(int), 1, train_f);
 	
-		vector<KeyPoint> kp = read_keypoints(train_f);
-		Mat d = read_descriptors(train_f);
+		vector<KeyPoint> kp = read_keypoints(train_f, args.v);
+		Mat d = read_descriptors(train_f, args.v);
 
 		list<stack<DMatch>> match_buckets = get_match_buckets(
 				cross_match(matcher, query_d, d, kp),
@@ -215,19 +213,19 @@ int main(int argc, char **argv) {
 				(float) width + .5f,
 				(float) height + .5f );
 
-		/* fprintf(stderr, "\t%u buckets.\n", match_buckets.size()); */
+		if (args.v) fprintf(stderr, "\t%lu buckets.\n", match_buckets.size());
 
 		bool not_found;
 		size_t w = 0;
 		do {
-			/* fprintf(stderr, "\tw: %u\n", w); */
+			if (args.v) fprintf(stderr, "\tw: %lu\n", w);
 
 			size_t ftsize = 0;
 
 			for (auto it = match_buckets.begin(); it != match_buckets.end(); it++)
 				ftsize += min(min_points, (*it).size());
 
-			/* fprintf(stderr, "\tftsize: %u\n", ftsize); */
+			if (args.v) fprintf(stderr, "\tftsize: %lu\n", ftsize);
 
 			if (ftsize < 10) break;
 
@@ -254,7 +252,7 @@ int main(int argc, char **argv) {
 			const double det = h.at<double>(0,0)*h.at<double>(1,1) - \
 												 h.at<double>(1,0)*h.at<double>(0,1); 
 
-			/* fprintf(stderr, "\tdet: %f\n", det); */
+			if (args.v) fprintf(stderr, "\tdet: %f\n", det);
 			not_found = det < 0 || fabs(det) > 1;
 			w++;
 

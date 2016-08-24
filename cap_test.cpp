@@ -109,7 +109,7 @@ int main(void) {
 				}, [&]() {
 					/* float width = xmax - xmin, height = ymax - ymin; */
 
-					if (size != 1) fprintf(stderr, "%u/", size);
+					if (size != 1) fprintf(stderr, "%lu/", size);
 
 					/* if (width > 3.0f && height > 3.0f) { */
 						rectangle(cframe, Point2f(xmin, ymin), Point2f(xmax, ymax), Scalar(255, 0, 0), 1);
@@ -130,7 +130,7 @@ int main(void) {
 				});
 
 
-		fprintf(stderr, "valid clusters: %u\n", n_clusters);
+		fprintf(stderr, "valid clusters: %lu\n", n_clusters);
 		imshow("d", cframe);
 
 	} while (waitKey(1)!='\x1b');
