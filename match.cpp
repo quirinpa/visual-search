@@ -1,53 +1,26 @@
-#include <vector>
-using std::vector;
-
-#include <opencv2/opencv.hpp>
-using cv::KeyPoint;
-
-#include "stdio.h"
-
-static
-vector<KeyPoint> read_keypoints(FILE *inp, bool v)
-{
-	size_t n;
-	fread(&n, sizeof(size_t), 1, inp);
-	if (v) fprintf(stderr, "rk: %lu\n", n);
-
-	vector<KeyPoint> kp(n);
-	fread(&kp[0], sizeof(KeyPoint), n, inp);
-
-	return kp;
-}
-
-using cv::Mat;
-
-static
-Mat read_descriptors(FILE *inp, bool v)
-{
-	int cols, rows;
-	fread(&cols, sizeof(int), 1, inp);
-	fread(&rows, sizeof(int), 1, inp);
-
-	int size = cols*rows;
-	if (v) fprintf(stderr, "rd: %d %d %d\n", cols, rows, size);
-	unsigned char *buffer = (unsigned char*) malloc(size*sizeof(char));
-
-	fread(buffer, sizeof(char), size, inp);
-
-	return Mat(rows, cols, CV_8UC1, buffer);
-}
-
 #include <argp.h>
 
 const char *argp_program_version = "vs-match 0.1a",
-						 *argp_program_bug_address = "quirinpa@gmail.com";
+			*argp_program_bug_address = "quirinpa@gmail.com";
 
 static char doc[] = "Match query and train descriptors to identify if"\
 										 " an image contains an object.",
 
 						args_doc[] = "[query-path] [train-path]";
 
-/* #include <stdbool.h> */
+#include <opencv2/core.hpp>
+
+enum NormTypes { NORM_INF       = 1,
+                 NORM_L1        = 2,
+                 NORM_L2        = 4,
+                 NORM_L2SQR     = 5,
+                 NORM_HAMMING   = 6,
+                 NORM_HAMMING2  = 7,
+                 NORM_TYPE_MASK = 7,
+                 NORM_RELATIVE  = 8, //!< flag
+                 NORM_MINMAX    = 32 //!< flag
+               };
+
 typedef struct {
 	char *query_path,
 			 *train_path; 
@@ -55,9 +28,8 @@ typedef struct {
 	enum cv::NormTypes norm_type;
 
 	bool ratio_test,
-			 cross_match,
-			 show_bounds,
-			 v;
+			 cross_match;
+			 /* show_bounds; TODO */
 
 	size_t clustering_min_points,
 				 homography_attempts;
@@ -68,77 +40,74 @@ typedef struct {
 
 } arguments_t;
 
+
 static struct argp_option options[] = {
-	{"verbose", 'v', NULL, 0, "show debug information", 0},
-	{"ratio-test", 'R', "bool", 0, "Enable David Lowe's ratio test, KNN k=2. (0)", 0},
-	{"cross-match", 'c', "bool", 0, "Enable cross-matching (1)", 0},
-	{"show-bounds", 'b', "bool", 0, "Output rectangle coordinates. (0)", 0},
-	{"norm-type", 'n', "enum cv::NormTypes", 0, "Norm Type for matcher (3: NORM_L2)", 0},
-	{"clustering-max-dist", 'd', "float", 0, "Cluster points that have distances below this value as being part of the same cluster (5.0f)", 0},
-	{"clustering-min-points", 'p', "size_t", 0, "Minimum number of points in a cluster (10U)", 0},
-	{"subspace-min-width", 'w', "float", 0, "Minimum width of a valid subspace cluster (10.0f)", 0},
-	{"subspace-min-height", 'h', "float", 0, "Minimum height of a valid subspace cluster (10.0f)", 0},
-	{"homography-attempts", 'a', "size_t", 0, "How many times should the bucket-points-homography loop repeat? (3)", 0},
+	{ "skip-ratio", 'R', NULL, 0, "Disable David Lowe's ratio test.", 0 },
+
+	{ "skip-cross-match", 'c', NULL, 0, "Disable cross-matching.", 0 },
+
+	{ "clustering-max-dist", 'd', "FLOAT", 0,
+		"Cluster points that have a distance in pixels below this value are part "
+		"of the same cluster (default: 5)", 0 },
+
+	{ "clustering-min-points", 'p', "SIZE_T", 0,
+		"A cluster is valid if it has at least this number of points "
+		"(default: 10)", 0 },
+
+	{ "subspace-min-width", 'w', "FLOAT", 0,
+		"A subspace cluster is valid if it has at least this width in pixels"
+		"(default: 10)", 0 },
+
+	{ "subspace-min-height", 'h', "FLOAT", 0,
+		"A subspace cluster is valid if it has at least this height in pixels"
+		"(default: 10)", 0 },
+
+	{ "homography-attempts", 'a', "size_t", 0,
+		"How many times should the bucket-points-homography loop repeat? (3)", 0 },
+
 	{0, 0, 0, 0, 0, 0}
 };
 
+__inline__ static bool
+parse_bool(char *arg)
+{
+	return arg && arg[0] == '1';
+}
+
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
-	arguments_t *arguments = (arguments_t*) state->input;
+	arguments_t *args = (arguments_t*) state->input;
 
 	switch (key) {
-		case 'v':
-			arguments->v = true;
-			break;
+		case 'a': args->homography_attempts = (size_t) strtol(arg, NULL, 10); break;
 
-		case 'a':
-			arguments->homography_attempts = (size_t) strtol(arg, NULL, 10);
-			break;
+		case 'R': args->ratio_test = parse_bool(arg); break;
 
-		case 'R':
-			arguments->ratio_test = arg && arg[0] == '1';
-			break;
+		case 'c': args->cross_match = parse_bool(arg); break;
 
-		case 'c':
-			arguments->cross_match = arg && arg[0] == '1';
-			break;
+		/* case 'b': args->show_bounds = parse_bool(arg); break; */
 
-		case 'b':
-			arguments->show_bounds = arg && arg[0] == '1';
-			break;
+		case 'n': args->norm_type = (cv::NormTypes) strtol(arg, NULL, 10); break;
 
-		case 'n':
-			arguments->norm_type = (cv::NormTypes) strtol(arg, NULL, 10);
-			break;
-
-		case 'd':
-			arguments->clustering_max_dist = strtof(arg, NULL);
-			break;
+		case 'd': args->clustering_max_dist = strtof(arg, NULL); break;
 		
-		case 'w':
-			arguments->subspace_min_width = strtof(arg, NULL);
-			break;
+		case 'w': args->subspace_min_width = strtof(arg, NULL); break;
 
-		case 'h':
-			arguments->subspace_min_height = strtof(arg, NULL);
-			break;
+		case 'h': args->subspace_min_height = strtof(arg, NULL); break;
 
-		case 'p':
-			arguments->clustering_min_points = (size_t) strtol(arg, NULL, 10);
-			break;
+		case 'p': args->clustering_min_points = (size_t) strtol(arg, NULL, 10); break;
 
 		case ARGP_KEY_NO_ARGS:
 			argp_usage(state);
 			break;
 
 		case ARGP_KEY_ARG:
-			if (!arguments->query_path) {
-				arguments->query_path = arg;
-				arguments->train_path = state->argv[state->next];
+			if (!args->query_path) {
+				args->query_path = arg;
+				args->train_path = state->argv[state->next];
 			}
 			break;
 
-		default:
-			return ARGP_ERR_UNKNOWN;
+		default: return ARGP_ERR_UNKNOWN;
 	}
 
 	return 0;
@@ -146,12 +115,50 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 
 static struct argp argp = { options, parse_opt, args_doc, doc, 0, NULL, 0 };
 
-__inline__ static arguments_t
-get_arguments(int argc, char **argv)
+#include <vector>
+#include "debug.h"
+
+static std::vector<cv::KeyPoint>
+read_keypoints(FILE *inp)
 {
+	size_t n;
+	fread(&n, sizeof(size_t), 1, inp);
+	dprint("rk: %lu", n);
+
+	std::vector<cv::KeyPoint> kp(n);
+	fread(&kp[0], sizeof(cv::KeyPoint), n, inp);
+
+	return kp;
+}
+
+static cv::Mat
+read_descriptors(FILE *inp)
+{
+	int cols, rows;
+	fread(&cols, sizeof(int), 1, inp);
+	fread(&rows, sizeof(int), 1, inp);
+
+	int size = cols*rows;
+	dprint("rd: %d %d %d", cols, rows, size);
+
+	unsigned char *buffer = (unsigned char*) malloc(size*sizeof(char));
+
+	fread(buffer, sizeof(char), size, inp);
+
+	return cv::Mat(rows, cols, CV_8UC1, buffer);
+}
+
+#include "cross_match.hpp"
+#include "get_match_buckets.hpp"
+#include <algorithm>
+#include <list>
+#include <stack>
+
+int main(int argc, char **argv) {
 	arguments_t args;
+
 	args.cross_match = true;
-	args.ratio_test = args.show_bounds = args.v = false;
+	/* args.ratio_test = args.show_bounds = false; */
 	args.norm_type = cv::NORM_L2;
 	args.clustering_min_points = 10U;
 	args.clustering_max_dist = 5.0f;
@@ -160,25 +167,6 @@ get_arguments(int argc, char **argv)
 	args.query_path = NULL;
 
 	argp_parse(&argp, argc, argv, 0, 0, &args);
-
-	return args;
-} 
-using cv::DMatch;
-
-#include "cross_match.hpp"
-#include "get_match_buckets.hpp"
-
-#include <stack>
-using std::stack;
-#include <list>
-using std::list;
-
-#include <algorithm>
-using std::min;
-using std::max;
-
-int main(int argc, char **argv) {
-	arguments_t args = get_arguments(argc, argv);
 
 	float min_width = args.subspace_min_width,
 				min_height = args.subspace_min_height,
@@ -189,54 +177,56 @@ int main(int argc, char **argv) {
 	static const cv::BFMatcher matcher( args.norm_type, false );
 
 	FILE *query_f = fopen(args.query_path, "rb");
-	vector<KeyPoint> query_kp = read_keypoints(query_f, args.v);
-	Mat query_d = read_descriptors(query_f, args.v);
+	std::vector<cv::KeyPoint> query_kp = read_keypoints(query_f);
+	cv::Mat query_d = read_descriptors(query_f);
 	fclose(query_f);
 
 	FILE *train_f = fopen(args.train_path, "rb");
 	size_t db_n;
 	fread(&db_n, sizeof(size_t), 1, train_f);
-	if (args.v) fprintf(stderr, "rn: %lu\n", db_n);
+	dprint("rn: %lu", db_n);
 
 	for (size_t i = 0; i < db_n; i++) {
-		if (args.v) fprintf(stderr, "train #%lu\n", i);
+		dprint("train #%lu", i);
+
 		int width, height;
 		fread(&width, sizeof(int), 1, train_f);
 		fread(&height, sizeof(int), 1, train_f);
 	
-		vector<KeyPoint> kp = read_keypoints(train_f, args.v);
-		Mat d = read_descriptors(train_f, args.v);
+		std::vector<cv::KeyPoint> kp = read_keypoints(train_f);
+		cv::Mat d = read_descriptors(train_f);
 
-		list<stack<DMatch>> match_buckets = get_match_buckets(
+		std::list<std::stack<cv::DMatch>> match_buckets = get_match_buckets(
 				cross_match(matcher, query_d, d, kp),
 				max_dist, min_points, kp, min_width, min_height,
 				(float) width + .5f,
 				(float) height + .5f );
 
-		if (args.v) fprintf(stderr, "\t%lu buckets.\n", match_buckets.size());
+		dprint(" %lu buckets", match_buckets.size());
 
 		bool not_found;
 		size_t w = 0;
+
 		do {
-			if (args.v) fprintf(stderr, "\tw: %lu\n", w);
+			dprint(" tw: %lu", w);
 
 			size_t ftsize = 0;
 
 			for (auto it = match_buckets.begin(); it != match_buckets.end(); it++)
-				ftsize += min(min_points, (*it).size());
+				ftsize += std::min(min_points, (*it).size());
 
-			if (args.v) fprintf(stderr, "\tftsize: %lu\n", ftsize);
+			dprint(" ftsize: %lu", ftsize);
 
 			if (ftsize < 10) break;
 
-			vector<cv::Point2f> from(ftsize), to(ftsize);
+			std::vector<cv::Point2f> from(ftsize), to(ftsize);
 			size_t id = 0;
 
 			for (auto it = match_buckets.begin(); it != match_buckets.end(); it++) {
-				stack<DMatch> s = *it;
+				std::stack<cv::DMatch> s = *it;
 
-				for (size_t k = 0; k < min(min_points, s.size()); k++) {
-					DMatch match = s.top();
+				for (size_t k = 0; k < std::min(min_points, s.size()); k++) {
+					cv::DMatch match = s.top();
 					from[id] = query_kp[match.queryIdx].pt;
 					to[id] = kp[match.trainIdx].pt;
 
@@ -247,12 +237,13 @@ int main(int argc, char **argv) {
 
 			/* vector<unsigned char> inliersMask(ftsize); */
 			/* Mat h = findHomography(from, to, cv::CV_RANSAC, 1, inliersMask); */
-			Mat h = findHomography(from, to, CV_RANSAC, 1);
+			cv::Mat h = findHomography(from, to, CV_RANSAC, 1);
 
 			const double det = h.at<double>(0,0)*h.at<double>(1,1) - \
 												 h.at<double>(1,0)*h.at<double>(0,1); 
 
-			if (args.v) fprintf(stderr, "\tdet: %f\n", det);
+			dprint(" det: %f", det);
+
 			not_found = det < 0 || fabs(det) > 1;
 			w++;
 
