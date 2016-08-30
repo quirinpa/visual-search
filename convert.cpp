@@ -15,7 +15,7 @@ typedef struct {
 	enum FDDE fd, de;
 	char *out; 
 	bool q;
-	std::list<char *> inputs;
+	std::list<char *> glob_paths;
 } arguments_t;
 
 static struct argp_option options[] = {
@@ -36,9 +36,10 @@ static struct argp_option options[] = {
 	{NULL, '\0', NULL, 0, NULL, 0}
 };
 
+#include <glob.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
+/* #include <unistd.h> */
+/* #include <errno.h> */
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 	arguments_t *args = (arguments_t*) state->input;
 
@@ -48,12 +49,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 		case 'e': args->de = (enum FDDE) strtol(arg, NULL, 10); break; 
 		case 'd': args->fd = (enum FDDE) strtol(arg, NULL, 10); break;
 		case ARGP_KEY_NO_ARGS: argp_usage(state); break;
-		case ARGP_KEY_ARG:
-			if ( access( arg, F_OK | R_OK ) == -1 ) return errno;
-
-			args->inputs.push_back(arg);
-			break;
-
+		case ARGP_KEY_ARG: args->glob_paths.push_back(arg); break;
 		default: return ARGP_ERR_UNKNOWN;
 	}
 
@@ -103,7 +99,7 @@ write_descriptors(FILE *out, cv::Mat& d) {
 #include <opencv2/xfeatures2d.hpp>
 
 template <class T>
-static T*
+static cv::Ptr<T>
 get_algorithm(enum FDDE id) {
 	switch (id) {
 		case 0: return cv::BRISK::create();
@@ -116,39 +112,102 @@ get_algorithm(enum FDDE id) {
 	}
 	return cv::BRISK::create();
 }
-/* #include <opencv2/highgui/highgui.hpp> */
+
+__inline__ static int
+process_glob(char * path, glob_t *save_glob) {
+	switch (glob(path, GLOB_ERR, NULL, save_glob)) {
+		case 0: return 0;
+		case GLOB_NOSPACE: return ENOMEM;
+		case GLOB_ABORTED: return EIO;
+		case GLOB_NOMATCH: return ENOENT;
+		default: fputs("Glob: Unknown error\n", stderr); return 1;
+	}
+}
 
 int main(int argc, char **argv) {
 	arguments_t args = get_arguments(argc, argv);
-	enum FDDE fd_id = args.fd, de_id = args.de;
-
-	if ( fd_id > 5 || (fd_id > 3 && fd_id != de_id) ) return 1;
-
 	FILE *out = args.out ? fopen(args.out, "wb") : stdout;
 
-	cv::FeatureDetector* detector = get_algorithm <cv::FeatureDetector> ( fd_id );
-	cv::DescriptorExtractor* extractor = fd_id == de_id ?
-		(cv::DescriptorExtractor*) detector :
-		get_algorithm <cv::DescriptorExtractor> (de_id);
+	enum FDDE detector_id = args.fd,
+						extractor_id = args.de;
 
-	std::list<char*>& inputs = args.inputs;
-	bool not_q = !args.q, is_bin = fd_id < 2 && de_id < 2;
-	size_t n_inputs = inputs.size();
+	if (detector_id > 3 && detector_id != extractor_id) {
+		fputs("Detector and extractor are incompatible\n", stderr);
+		fclose(out);
+		return 1;
+	}
 
-	fwrite(&is_bin, sizeof(bool), 1, out);
+	{
+		bool norm_hamming = detector_id < 2;
 
-	if (not_q) {
-		dprint("wn: %lu", n_inputs);
-		fwrite(&n_inputs, sizeof(size_t), 1, out);
+		if (norm_hamming && detector_id != extractor_id) {
+			fputs("FeatureDetector and DescriptorExtractor NormTypes don't match", stderr);
+			fclose(out);
+			return 1;
+		}
+
+		fwrite(&norm_hamming, sizeof(bool), 1, out);
+	}
+
+	cv::Ptr<cv::FeatureDetector> detector =\
+		get_algorithm <cv::FeatureDetector> ( detector_id );
+
+	cv::Ptr<cv::DescriptorExtractor> extractor =
+		(cv::Ptr<cv::DescriptorExtractor>) (
+				detector_id == extractor_id ? detector :
+				get_algorithm <cv::DescriptorExtractor> ( extractor_id ) );
+
+	bool not_q = !args.q;
+	std::list<char *> images;
+
+	{
+		size_t n_images = 0;
+		auto it = args.glob_paths.begin();
+
+		while (it != args.glob_paths.end()) {
+			glob_t *leak_glob = (glob_t*) malloc(sizeof(glob_t));
+
+			{
+				register int ret = process_glob(*it, leak_glob);
+
+				if (ret) {
+					fclose(out);
+					return ret;
+				}
+			}
+
+			{
+				char **path_it = leak_glob->gl_pathv,
+						 **path_end = path_it + leak_glob->gl_pathc;
+
+				while (path_it < path_end) {
+					images.push_back(*path_it);
+					n_images++;
+					path_it++;
+				}
+			}
+
+			it++;
+		}
+
+		if (not_q) {
+			dprint("%lu images", n_images);
+			fwrite(&n_images, sizeof(size_t), 1, out);
+		}
 	}
 
 	try {
-		for (auto it = inputs.begin(); it != inputs.end(); it++) {
+		for (auto it = images.begin(); it != images.end(); it++) {
 			char *filename = *it;
 
+			dprint("%s", filename);
 			cv::Mat image = cv::imread(filename);
 
-			if (image.empty()) throw "image is empty";
+			if (image.empty()) {
+				fprintf(stderr, "Error reading image '%s'\n", filename);
+				fclose(out);
+				return 1;
+			}
 
 			if (not_q) {
 				fwrite(&image.cols, sizeof(int), 1, out);
@@ -170,12 +229,15 @@ int main(int argc, char **argv) {
 					fputc(c, out);
 				} while (c);
 			}
+
 		}
 	} catch (cv::Exception& e) { 
+		fputs("Exception\n", stderr);
 		fclose(out);
 		return 1;
 	}
 
 	fclose(out);
+
 	return 0;
 }
