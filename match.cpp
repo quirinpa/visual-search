@@ -10,17 +10,6 @@ static char doc[] = "Match query and train descriptors to identify if"\
 
 #include <opencv2/core.hpp>
 
-enum NormTypes { NORM_INF       = 1,
-                 NORM_L1        = 2,
-                 NORM_L2        = 4,
-                 NORM_L2SQR     = 5,
-                 NORM_HAMMING   = 6,
-                 NORM_HAMMING2  = 7,
-                 NORM_TYPE_MASK = 7,
-                 NORM_RELATIVE  = 8, //!< flag
-                 NORM_MINMAX    = 32 //!< flag
-               };
-
 typedef struct {
 	char *query_path,
 			 *train_path; 
@@ -159,7 +148,7 @@ int main(int argc, char **argv) {
 
 	args.cross_match = true;
 	/* args.ratio_test = args.show_bounds = false; */
-	args.norm_type = cv::NORM_L2;
+	/* args.norm_type = cv::NORM_L2; */
 	args.clustering_min_points = 10U;
 	args.clustering_max_dist = 5.0f;
 	args.subspace_min_height = args.subspace_min_width = 10.0f;
@@ -174,17 +163,29 @@ int main(int argc, char **argv) {
 
 	size_t min_points = args.clustering_min_points;
 
-	static const cv::BFMatcher matcher( args.norm_type, false );
-
 	FILE *query_f = fopen(args.query_path, "rb");
+	bool query_hamming;
+	fread(&query_hamming, sizeof(bool), 1, query_f);
 	std::vector<cv::KeyPoint> query_kp = read_keypoints(query_f);
 	cv::Mat query_d = read_descriptors(query_f);
 	fclose(query_f);
 
 	FILE *train_f = fopen(args.train_path, "rb");
+	bool train_hamming;
+	fread(&train_hamming, sizeof(bool), 1, train_f);
+
+	if (query_hamming != train_hamming) {
+		fclose(train_f);
+		return 1;
+	}
+
 	size_t db_n;
 	fread(&db_n, sizeof(size_t), 1, train_f);
 	dprint("rn: %lu", db_n);
+
+	/* TODO: research advantages of l2 vs l1 */
+	static const cv::BFMatcher
+		matcher( query_hamming ? cv::NORM_HAMMING : cv::NORM_L1, false );
 
 	for (size_t i = 0; i < db_n; i++) {
 		dprint("train #%lu", i);

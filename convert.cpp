@@ -8,7 +8,7 @@ static char doc[] =
 	"either a query or a train file so that you can search objects efficiently. ",
 	args_doc[] = "[image file path]";
 
-enum FDDE { ORB, SIFT, SURF, BRISK, KAZE, AKAZE };
+enum FDDE { BRISK, ORB, SIFT, SURF, KAZE, AKAZE };
 
 #include <list>
 typedef struct {
@@ -26,7 +26,7 @@ static struct argp_option options[] = {
 
 	{ "feature-detector", 'd', "UCHAR", 0,
 		"Specify feature detector algorithm (default: BRISK).\nAvailable options: "
-		"0: ORB; 1: SIFT; 2: SURF; 3: BRISK; 4: KAZE; 5: AKAZE", 0 },
+		"0: BRISK; 1: ORB; 2: SIFT; 3: SURF; 4: KAZE; 5: AKAZE", 0 },
 
 	{ "descriptor-extractor", 'e', "UCHAR", 0,
 		"Specify descriptor extractor algorithm (default: BRISK).", 0 },
@@ -103,44 +103,52 @@ write_descriptors(FILE *out, cv::Mat& d) {
 #include <opencv2/xfeatures2d.hpp>
 
 template <class T>
-static cv::Ptr<T>
+static T*
 get_algorithm(enum FDDE id) {
 	switch (id) {
-		case 0: return cv::ORB::create();
-		case 1: return cv::xfeatures2d::SIFT::create();
-		case 2: return cv::xfeatures2d::SURF::create();
-		case 3: return cv::BRISK::create();
+		case 0: return cv::BRISK::create();
+		case 1: return cv::ORB::create();
+		case 2: return cv::xfeatures2d::SIFT::create();
+		case 3: return cv::xfeatures2d::SURF::create();
 		case 4: return cv::KAZE::create();
 		case 5: return cv::AKAZE::create();
-		case 6: return cv::xfeatures2d::FREAK::create();
+		/* case 6: return cv::xfeatures2d::FREAK::create(); */
 	}
 	return cv::BRISK::create();
 }
+/* #include <opencv2/highgui/highgui.hpp> */
 
-#include <opencv2/highgui/highgui.hpp>
+int main(int argc, char **argv) {
+	arguments_t args = get_arguments(argc, argv);
+	enum FDDE fd_id = args.fd, de_id = args.de;
 
-__inline__ static int
-process(
-		cv::Ptr<cv::FeatureDetector>& detector,
-		cv::Ptr<cv::DescriptorExtractor>& extractor,
-		std::list<char*>& inputs,
-		FILE *out,
-		bool not_q )
-{
+	if ( fd_id > 5 || (fd_id > 3 && fd_id != de_id) ) return 1;
+
+	FILE *out = args.out ? fopen(args.out, "wb") : stdout;
+
+	cv::FeatureDetector* detector = get_algorithm <cv::FeatureDetector> ( fd_id );
+	cv::DescriptorExtractor* extractor = fd_id == de_id ?
+		(cv::DescriptorExtractor*) detector :
+		get_algorithm <cv::DescriptorExtractor> (de_id);
+
+	std::list<char*>& inputs = args.inputs;
+	bool not_q = !args.q, is_bin = fd_id < 2 && de_id < 2;
 	size_t n_inputs = inputs.size();
+
+	fwrite(&is_bin, sizeof(bool), 1, out);
 
 	if (not_q) {
 		dprint("wn: %lu", n_inputs);
 		fwrite(&n_inputs, sizeof(size_t), 1, out);
 	}
 
-	for (auto it = inputs.begin(); it != inputs.end(); it++) {
-		try {
+	try {
+		for (auto it = inputs.begin(); it != inputs.end(); it++) {
 			char *filename = *it;
 
 			cv::Mat image = cv::imread(filename);
 
-			if (image.empty()) return 1;
+			if (image.empty()) throw "image is empty";
 
 			if (not_q) {
 				fwrite(&image.cols, sizeof(int), 1, out);
@@ -162,37 +170,12 @@ process(
 					fputc(c, out);
 				} while (c);
 			}
-
-		} catch (cv::Exception& e) {
-			return 1;
 		}
-	}
-
-	return 0;
-}
-
-int main(int argc, char **argv) {
-	arguments_t args = get_arguments(argc, argv);
-	enum FDDE fd_id = args.fd, de_id = args.de;
-
-	if ( fd_id > 5 || (fd_id > 3 && fd_id != de_id) ) return 1;
-
-	FILE *out = args.out ? fopen(args.out, "wb") : stdout;
-	int ret;
-
-	if (fd_id == de_id) {
-		cv::Ptr<cv::FeatureDetector> detector = get_algorithm <cv::FeatureDetector> (fd_id);
-
-		ret = process (detector, ( cv::Ptr<cv::DescriptorExtractor>& ) detector,
-				args.inputs, out, !args.q );
-
-	} else {
-		cv::Ptr<cv::FeatureDetector> detector = get_algorithm <cv::FeatureDetector> (fd_id);
-		cv::Ptr<cv::DescriptorExtractor> extractor = get_algorithm <cv::DescriptorExtractor> (de_id);
-
-		ret = process( detector, extractor, args.inputs, out, !args.q );
+	} catch (cv::Exception& e) { 
+		fclose(out);
+		return 1;
 	}
 
 	fclose(out);
-	return ret;
+	return 0;
 }
