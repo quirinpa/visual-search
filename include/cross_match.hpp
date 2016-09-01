@@ -4,10 +4,15 @@
 #include <opencv2/opencv.hpp>
 #include <map>
 
-std::multimap<float, cv::DMatch>
+/* finds matches that match in both directions. generating
+ * a multimap, oriented by the match's keypoint x coordinate,
+ * for convenience, in regards to the data format that is
+ * expected by subspace_clustering. */
+std::multimap<float, DMatch>
 cross_match(
-		const cv::DescriptorMatcher&,
-		cv::Mat, cv::Mat,
-		std::vector<cv::KeyPoint> );
+		const cv::DescriptorMatcher& matcher,
+		cv::Mat query_descriptors,
+		cv::Mat train_descriptors,
+		std::vector<cv::KeyPoint> train_keypoints )
 
 #endif

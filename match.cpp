@@ -1,6 +1,6 @@
 #include <argp.h>
 
-const char *argp_program_version = "vs-match 0.1a",
+const char *argp_program_version = "vs-match 0.1b-rc1",
 			*argp_program_bug_address = "quirinpa@gmail.com";
 
 static char doc[] = "Match query and train descriptors to identify if"\
@@ -8,13 +8,9 @@ static char doc[] = "Match query and train descriptors to identify if"\
 
 						args_doc[] = "[query-path] [train-path]";
 
-#include <opencv2/core.hpp>
-
 typedef struct {
 	char *query_path,
 			 *train_path; 
-
-	enum cv::NormTypes norm_type;
 
 	bool ratio_test,
 			 cross_match;
@@ -105,6 +101,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 static struct argp argp = { options, parse_opt, args_doc, doc, 0, NULL, 0 };
 
 #include <vector>
+#include <opencv2/core.hpp>
 #include "debug.h"
 
 static std::vector<cv::KeyPoint>
@@ -197,7 +194,8 @@ int main(int argc, char **argv) {
 		std::vector<cv::KeyPoint> kp = read_keypoints(train_f);
 		cv::Mat d = read_descriptors(train_f);
 
-		std::list<std::stack<cv::DMatch>> match_buckets = get_match_buckets(
+		std::list<std::stack<cv::DMatch>> match_buckets = 
+			get_match_buckets(
 				cross_match(matcher, query_d, d, kp),
 				max_dist, min_points, kp, min_width, min_height,
 				(float) width + .5f,
@@ -223,6 +221,7 @@ int main(int argc, char **argv) {
 			std::vector<cv::Point2f> from(ftsize), to(ftsize);
 			size_t id = 0;
 
+			/* */
 			for (auto it = match_buckets.begin(); it != match_buckets.end(); it++) {
 				std::stack<cv::DMatch> s = *it;
 
@@ -236,8 +235,7 @@ int main(int argc, char **argv) {
 				}
 			}
 
-			/* vector<unsigned char> inliersMask(ftsize); */
-			/* Mat h = findHomography(from, to, cv::CV_RANSAC, 1, inliersMask); */
+			/* TODO vector<unsigned char> inliersMask(ftsize); */
 			cv::Mat h = findHomography(from, to, CV_RANSAC, 1);
 
 			const double det = h.at<double>(0,0)*h.at<double>(1,1) - \

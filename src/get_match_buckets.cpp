@@ -15,14 +15,36 @@ using std::stack;
 using std::min;
 using std::max;
 
+/* TODO this function is probably not required, its functionaity
+ * should perhaps be merged with subspace_clustering, saving at 
+ * least an invocation, for subspace_clustering is not used
+ * anywhere else */
+
+/* TODO this needs to be further optimized for performance and
+ * readability */
+
+/* TODO try to make subspace cluster stacks more randomly distributed */
 list<stack<DMatch>> get_match_buckets(
-		std::multimap<float, DMatch> x_megacluster,
-		float max_distance,
-		size_t min_elements,
-		std::vector<cv::KeyPoint>& train_kps,
-		float min_width,
-		float min_height,
-		float width,
+
+		std::multimap<float, DMatch> cross_match_result, /* x ordered matches that match in
+																												both directions: query->train
+																												and train->query */
+
+		float max_distance, /* maximum distance a match could be from one on a cluster, 
+												 * in regards to x or y, to be considered part of that cluster */
+
+		size_t min_elements, /* minimum of elements a cluster can have to be
+														included in the result */
+
+		std::vector<cv::KeyPoint>& train_keypoints, /* for being able to sort coordinates */
+
+		float min_width, /* minimum width a cluster can have to be included in the result */
+		float min_height, /* same thing, but in regards to y */
+
+		float width, /* TODO this is just kind of dumb. it is used to calculate bounding box
+										coordinates that define the rectangle/square. We should get the
+										first element of what we want to iterate and define initial
+										bbcoordinates acoording to it, instead of this. */
 		float height )
 {
 	float minx = width,
