@@ -81,8 +81,7 @@ struct equals_crossmatch {
 multimap<float, DMatch>
 cross_match(
 		const DescriptorMatcher& matcher,
-		Mat d1, Mat d2,
-		vector<KeyPoint> train_kp )
+		Mat d1, Mat d2, vector<KeyPoint>& train_kp )
 {
 	unordered_map<
 		pair<int, int>,

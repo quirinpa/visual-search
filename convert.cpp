@@ -209,11 +209,6 @@ int main(int argc, char **argv) {
 				return 1;
 			}
 
-			if (not_q) {
-				fwrite(&image.cols, sizeof(int), 1, out);
-				fwrite(&image.rows, sizeof(int), 1, out);
-			}
-
 			std::vector<cv::KeyPoint> kp;
 			detector->detect(image, kp);
 			write_keypoints(out, kp);

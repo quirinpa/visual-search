@@ -14,12 +14,13 @@ CFLAGS := -ansi -Wnested-externs -Wstrict-prototypes -Wmissing-prototypes $(CXXF
 
 .PHONY: all clean todolist
 
-EXES := cap_test match convert
+EXES := match convert
+# EXES := cap_test match convert
 
 all: $(EXES)
 
-cap_test: cross_match.o subspace_clustering.o
-match: cross_match.o subspace_clustering.o get_match_buckets.o
+# cap_test: cross_match.o subspace_clustering.o
+match: cross_match.o subspace_clustering.o
 
 $(EXES): % : %.o
 	@echo CXX $@
