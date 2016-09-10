@@ -8,6 +8,11 @@ static char doc[] = "Match query and train descriptors to identify if"\
 
 						args_doc[] = "[query-path] [train-path]";
 
+/* enum output_format { */
+/* 	OF_PATH, */
+/* 	OF_PATHC, */
+/* }; */
+
 typedef struct {
 	char *query_path,
 			 *train_path; 
@@ -26,10 +31,6 @@ typedef struct {
 
 
 static struct argp_option options[] = {
-	/* { "skip-ratio", 'R', NULL, 0, "Disable David Lowe's ratio test.", 0 }, */
-
-	/* { "skip-cross-match", 'c', NULL, 0, "Disable cross-matching.", 0 }, */
-
 	{ "clustering-max-dist", 'd', "FLOAT", 0,
 		"Cluster points that have a distance in pixels below this value are part "
 		"of the same cluster (default: 15)", 0 },
@@ -190,7 +191,7 @@ int main(int argc, char **argv) {
 
 		dprint(" %lu buckets", buckets.size());
 
-		bool not_found = true;
+		double certainty;
 		if (buckets.size()) {
 			size_t w = 0;
 
@@ -226,27 +227,36 @@ int main(int argc, char **argv) {
 
 				/* TODO vector<unsigned char> inliersMask(ftsize); */
 				cv::Mat h = findHomography(from, to, CV_RANSAC, 1);
-				/* cv::Mat h = findHomography(from, to, CV_LMEDS, 1); */
 
-				const double det = h.at<double>(0,0)*h.at<double>(1,1) - \
-													 h.at<double>(1,0)*h.at<double>(0,1); 
+				{
+					double det = h.at<double>(0,0)*h.at<double>(1,1) - \
+										 h.at<double>(1,0)*h.at<double>(0,1); 
 
-				dprint(" det: %f", det);
+					certainty = 1 - fabs(0.5 - det) * 2;
+					fprintf( stderr, " c%.1f%%", certainty*100 );
+#define required_certainty .0
 
-				not_found = det < 0 || fabs(det) > 1;
-				dprint(" found: %d", (int) !not_found);
+					if (certainty > required_certainty) {
+						char c;
+						fputs("F ", stdout);
+
+						while ((c = (char)fgetc(train_f)))
+							putchar(c);
+
+						putchar('\n');
+
+						goto skip_skip_path;
+					}
+				}
+
 				w++;
+			} while (w < args.homography_attempts);
 
-			} while (not_found && w < args.homography_attempts);
-		}
+			while (fgetc(train_f));
+			continue;
 
-		if (not_found) while (fgetc(train_f));
-		else {
-			char c;
-
-			fputs("F ", stdout);
-			while ((c = (char)fgetc(train_f))) putchar(c);
-			putchar('\n');
+skip_skip_path:
+			;
 		}
 
 	}
