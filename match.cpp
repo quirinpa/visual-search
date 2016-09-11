@@ -132,11 +132,8 @@ read_descriptors(
 
 	dprint("Read Descriptor Mat (%lu bytes)", all_descriptor_bytes + sizeof(dim));
 
-	/* cv::Mat descriptors(dim[0], dim[1], descriptor_type, buffer); */
-	/* free(buffer); */
-	/* return descriptors; */
 	return cv::Mat(dim[0], dim[1], descriptor_type, buffer);
-	/* /1* FIXME MEMORY LEAK  *1/ */
+	/* don't forget to free(buffer) or free(mat.data) */
 }
 
 #include "cross_match.hpp"
@@ -246,11 +243,11 @@ int main(int argc, char **argv) {
 			return 1;
 		}
 
-		if (DEBUG) {
-			fputs("Read FilePath: '", stderr);
-			write(2, (void*)filepath, path_bytes);
-			fputs("'\n", stderr);
-		}
+#ifdef DEBUG
+		fputs("Read FilePath: '", stderr);
+		write(2, (void*)filepath, path_bytes);
+		fputs("'\n", stderr);
+#endif
 
 		/* The following performs subspace clustering on cross-checked matches,
 		 * extracting "buckets" of matches that may correspond to different

@@ -1,8 +1,13 @@
 #ifndef DEBUG_H
 #define DEBUG_H
 
-#define DEBUG 1
-#define dprint(str, ...) if (DEBUG) fprintf(stderr, str"\n", __VA_ARGS__);
-#define dputs(str) if (DEBUG) fputs(str"\n", stderr);
+#ifdef DEBUG
+#define dprint(str, ...); fprintf(stderr, str"\n", __VA_ARGS__);
+#define dputs(str); fputs(str"\n", stderr);
+#else
+#define dprint(str, ...); ;
+#define dputs(str); ;
+#endif
 
 #endif
+

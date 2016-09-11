@@ -3,23 +3,24 @@ SDIR := src
 
 VPATH = $(IDIR) $(SDIR)
 
-# DEBUG := -O
-DEBUG := -g -pg
+ifeq ($(DEBUG),)
+	DEBUG := -O
+else
+	DEBUG := -g -pg -D DEBUG
+endif
 
 CXXFLAGS := $(DEBUG) -I$(IDIR) -Wall -Wextra -pedantic -Wshadow -Wpointer-arith \
 	-Wcast-align -Wwrite-strings -Wmissing-declarations -Winline -Wno-long-long \
 	-Wuninitialized -Wconversion -Wredundant-decls -Wdouble-promotion
 
-CFLAGS := -ansi -Wnested-externs -Wstrict-prototypes -Wmissing-prototypes $(CXXFLAGS)
+# CFLAGS := -ansi -Wnested-externs -Wstrict-prototypes -Wmissing-prototypes $(CXXFLAGS)
 
 .PHONY: all clean todolist
 
 EXES := match convert
-# EXES := cap_test match convert
 
 all: $(EXES)
 
-# cap_test: cross_match.o subspace_clustering.o
 match: cross_match.o subspace_clustering.o
 
 $(EXES): % : %.o
