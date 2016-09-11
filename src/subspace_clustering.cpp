@@ -1,6 +1,7 @@
 #include <map>
 #include <opencv2/opencv.hpp>
 #include <functional>
+#include "debug.h"
 
 __inline__ static void
 divide_subspace(
@@ -39,7 +40,9 @@ divide_subspace(
 			size++;
 		}
 
-		if (size > min_elements && min_coord >= min_dimension) save();
+		if (size > min_elements && last_coord - min_coord >= min_dimension)
+			save();
+
 		cleanup();
 	}
 }
@@ -67,25 +70,28 @@ subspace_clustering(
 		[&](cv::DMatch& match) {
 			y_subcluster.insert( std::pair<float, cv::DMatch>
 					(train_keypoints[match.trainIdx].pt.y, match) );
-			/* fputs("iy", stderr); */
+			/* dputs("iy"); */
 		}, [&](void) {
-			/* fputs("sy", stderr); */
+			/* dputs("sy"); */
 			divide_subspace(y_subcluster, min_dimension, max_distance, min_elements,
 				[&](cv::DMatch& match) {
 					x_subcluster.push(match); 
-					/* fputs("ix", stderr); */
+					/* dputs("ix"); */
 				}, [&](void) {
 					result.push_back(x_subcluster); 
-					/* fputs("sx", stderr); */
+					/* dputs("sx"); */
 				}, [&](void) {
 					/* std::swap(x_subcluster, empty_match_bucket); */
 					x_subcluster = std::stack<cv::DMatch>();
-					/* fputs("cx", stderr); */
+					/* dputs("cx"); */
 				});
 		}, [&](void) {
 			y_subcluster.clear();
+			/* dputs("cy"); */
 			/* fputs("cy", stderr); */
 		});
+
+	/* dprint("subspace clusters: %lu", result.size()); */
 
 	return result;
 }

@@ -25,8 +25,8 @@ static struct argp_option options[] = {
 		"Otherwise a database file is genrated.", 0 },
 
 	{ "feature-detector", 'd', "UCHAR", 0,
-		"Specify feature detector algorithm (default: BRISK).\nAvailable options: "
-		"0: BRISK; 1: ORB; 2: SIFT; 3: SURF; 4: KAZE; 5: AKAZE", 0 },
+		"Specify feature detector algorithm (default: BRISK, where: "
+		"0-BRISK; 1-ORB; 2-SIFT; 3-SURF; 4-KAZE; 5-AKAZE", 0 },
 
 	{ "descriptor-extractor", 'e', "UCHAR", 0,
 		"Specify descriptor extractor algorithm (default: BRISK).", 0 },
@@ -62,7 +62,7 @@ __inline__ static arguments_t
 get_arguments(int argc, char **argv)
 {
 	arguments_t args;
-	args.de = args.fd = (FDDE) 3;
+	args.de = args.fd = (FDDE) 0;
 	args.out = NULL;
 	args.q = false;
 
@@ -76,24 +76,51 @@ get_arguments(int argc, char **argv)
 #include <stdio.h>
 #include "debug.h"
 
-static void 
-write_keypoints(FILE *out, std::vector<cv::KeyPoint>& kp) {
-	size_t c = kp.size();
+#include <unistd.h>
+static void
+write_keypoints(
+		int fd,
+		std::vector<cv::KeyPoint>& kp )
+{
+	size_t n_keypoints = kp.size(), 
+				 keypoint_bytes = n_keypoints * sizeof(cv::KeyPoint);
 	
-	dprint("wk: %lu", c);
-	fwrite(&c, sizeof(size_t), 1, out);
-	fwrite(&kp[0], sizeof(cv::KeyPoint), c, out);
+	if (write(fd, (void*) &n_keypoints, sizeof(size_t)) < 0) {
+		perror("Couldn't write Keypoint Vector # Bytes");
+		exit(1);
+	}
+
+	if (write(fd, (void*) &kp[0], keypoint_bytes) < 0) {
+		perror("Couldn't write Keypoint Vector");
+		exit(1);
+	}
+
+	dprint("Wrote Keypoint Vector (%lu, %lu bytes)", 
+			n_keypoints, keypoint_bytes + sizeof(size_t));
 }
 
 static void
-write_descriptors(FILE *out, cv::Mat& d) {
-	int cols = d.cols, rows = d.rows;
+write_descriptors(
+		int fd,
+		cv::Mat& d,
+		size_t descriptor_bytes )
+{
+	int dim[2] = { d.rows, d.cols };
 
-	dprint("wd: %d %d", cols, rows);
-	fwrite(&cols, sizeof(int), 1, out);
-	fwrite(&rows, sizeof(int), 1, out);
+	if (write(fd, (void*) dim, sizeof(dim)) < 0) {
+		perror("Couldn't write Descriptor Mat Dimensions");
+		exit(1);
+	}
 
-	fwrite(d.data, sizeof(char), cols*rows, out);
+	size_t all_descriptor_bytes = d.rows * d.cols * descriptor_bytes;
+
+	if (write(fd, (void*) d.data, all_descriptor_bytes) < 0) {
+		perror("Couldn't write Descriptor Mat");
+		exit(1);
+	}
+
+	dprint("Wrote Descriptor Mat (%dx%d, %lu bytes)", 
+			dim[0], dim[1], all_descriptor_bytes + sizeof(dim));
 }
 
 #include <opencv2/xfeatures2d.hpp>
@@ -124,29 +151,43 @@ process_glob(char * path, glob_t *save_glob) {
 	}
 }
 
+#include <fcntl.h>
 int main(int argc, char **argv) {
 	arguments_t args = get_arguments(argc, argv);
-	FILE *out = args.out ? fopen(args.out, "wb") : stdout;
+	int output_fd =  args.out ?
+		open(args.out,
+			O_CREAT | O_TRUNC | O_WRONLY,
+			S_IRUSR | S_IWUSR | S_IRGRP ) : 1;
 
 	enum FDDE detector_id = args.fd,
 						extractor_id = args.de;
 
 	if (detector_id > 3 && detector_id != extractor_id) {
 		fputs("Detector and extractor are incompatible\n", stderr);
-		fclose(out);
+		close(output_fd);
 		return 1;
 	}
 
+	size_t descriptor_bytes;
 	{
 		bool norm_hamming = detector_id < 2;
 
-		if (norm_hamming && detector_id != extractor_id) {
-			fputs("FeatureDetector and DescriptorExtractor NormTypes don't match", stderr);
-			fclose(out);
+		if (norm_hamming) {
+			descriptor_bytes = sizeof(char);
+
+			if (detector_id != extractor_id) {
+				fputs("FeatureDetector and DescriptorExtractor NormTypes don't match", stderr);
+				close(output_fd);
+				return 1;
+			}
+		} else descriptor_bytes = sizeof(int);
+
+		if (write(output_fd, (void*) &norm_hamming, sizeof(bool)) < 0) {
+			perror("Couldn't write Descriptor Hamming Status");
 			return 1;
 		}
 
-		fwrite(&norm_hamming, sizeof(bool), 1, out);
+		dprint("Wrote Descriptor Hamming Status (%d, %lu bytes)", norm_hamming, sizeof(bool));
 	}
 
 	cv::Ptr<cv::FeatureDetector> detector =\
@@ -157,6 +198,7 @@ int main(int argc, char **argv) {
 				detector_id == extractor_id ? detector :
 				get_algorithm <cv::DescriptorExtractor> ( extractor_id ) );
 
+	/* obtain image filenames that match glob */
 	bool not_q = !args.q;
 	std::list<char *> images;
 
@@ -171,7 +213,8 @@ int main(int argc, char **argv) {
 				register int ret = process_glob(*it, leak_glob);
 
 				if (ret) {
-					fclose(out);
+					perror("Glob processing failed");
+					close(output_fd);
 					return ret;
 				}
 			}
@@ -191,48 +234,59 @@ int main(int argc, char **argv) {
 		}
 
 		if (not_q) {
-			dprint("%lu images", n_images);
-			fwrite(&n_images, sizeof(size_t), 1, out);
+			if (write(output_fd, (void*) &n_images, sizeof(n_images)) < 0) {
+				perror("Coudn't write number of images");
+				return 1;
+			}
+
+			dprint("Wrote number of images (%lu, %lu bytes)", n_images, sizeof(n_images));
 		}
 	}
 
+	/* extract relevant attributes and save to file */
 	try {
 		for (auto it = images.begin(); it != images.end(); it++) {
 			char *filename = *it;
 
-			dprint("%s", filename);
 			cv::Mat image = cv::imread(filename);
 
 			if (image.empty()) {
-				fprintf(stderr, "Error reading image '%s'\n", filename);
-				fclose(out);
-				return 1;
+				fprintf(stderr, "Couldn't read image '%s'", filename);
+				return -1;
 			}
 
 			std::vector<cv::KeyPoint> kp;
 			detector->detect(image, kp);
-			write_keypoints(out, kp);
+			write_keypoints(output_fd, kp);
 
 			cv::Mat d;
 			extractor->compute(image, kp, d);
-			write_descriptors(out, d);
+			write_descriptors(output_fd, d, descriptor_bytes);
+
+			/* FIXME save str len first */
 
 			if (not_q) {
-				char c;
-				do {
-					c = *(filename++);
-					fputc(c, out);
-				} while (c);
+				size_t filepath_bytes = strlen(filename) * sizeof(char);
+
+				if (write(output_fd, (void*) &filepath_bytes, sizeof(size_t)) < 0) {
+					perror("Couldn't write filepath # bytes");
+					return 1;
+				}
+
+				if (write(output_fd, (void*) filename, filepath_bytes) < 0) {
+					perror("Couldn't write filepath");
+					return 1;
+				}
+
+				dprint("Wrote FilePath: %s", filename);
 			}
 
 		}
-	} catch (cv::Exception& e) { 
-		fputs("Exception\n", stderr);
-		fclose(out);
+	} catch (cv::Exception& ex) { 
+		fprintf(stderr, "Exception: %s\n", ex.what());
 		return 1;
 	}
 
-	fclose(out);
-
+	close(output_fd);
 	return 0;
 }

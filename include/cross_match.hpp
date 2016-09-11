@@ -11,8 +11,8 @@
 std::multimap<float, cv::DMatch>
 cross_match(
 		const cv::DescriptorMatcher& matcher,
-		cv::Mat query_descriptors,
-		cv::Mat train_descriptors,
+		cv::Mat& query_descriptors,
+		cv::Mat& train_descriptors,
 		std::vector<cv::KeyPoint>& train_keypoints );
 
 #endif

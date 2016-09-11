@@ -12,16 +12,18 @@ using std::function;
 #define use_knn false
 #define knn_ratio 0.8f
 
+#include "debug.h"
+
 __inline__ static void
 MATCH(
 		const DescriptorMatcher& matcher,
-		Mat d1, Mat d2,
+		Mat& d1, Mat& d2,
 		function<void (const DMatch&)> process_match)
 {
 #if use_knn
 
 	vector<vector<DMatch>> knnmatches;
-	matcher.knnMatch(d1, d2);
+	matcher.knnMatch(d1, d2, knnmatches);
 
 	for(vector<vector<DMatch>>::iterator it = knnmatches.begin();
 			it != knnmatches.end(); it++) {
@@ -42,6 +44,7 @@ MATCH(
 	vector<DMatch> temp; 
 	matcher.match(d1, d2, temp);
 
+	/* dprint("n matches: %lu", temp.size()); */
 	for(vector<DMatch>::iterator it = temp.begin();
 			it != temp.end(); it++)
 
@@ -81,7 +84,7 @@ struct equals_crossmatch {
 multimap<float, DMatch>
 cross_match(
 		const DescriptorMatcher& matcher,
-		Mat d1, Mat d2, vector<KeyPoint>& train_kp )
+		Mat& d1, Mat& d2, vector<KeyPoint>& train_kp )
 {
 	unordered_map<
 		pair<int, int>,
@@ -107,6 +110,6 @@ cross_match(
 
 	});
 
-	/* fprintf(stderr, "cross-checked matches: %u\n", result.size()); */
+	/* dprint("cross-checked: %lu", result.size()); */
 	return result;
 }
