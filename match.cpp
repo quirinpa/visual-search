@@ -1,10 +1,10 @@
 #include <argp.h>
 
-const char *argp_program_version = "vs-match 0.1b-rc1",
+const char *argp_program_version = "vs-match 0.1b-rc2",
 			*argp_program_bug_address = "quirinpa@gmail.com";
 
-static char doc[] = "Match query and train descriptors to identify if"\
-										 " an image contains an object.",
+static char doc[] = "Match query and train descriptors to identify if an image "\
+										 "contains an object.",
 
 						args_doc[] = "[query-path] [train-path]";
 
@@ -25,31 +25,26 @@ typedef struct {
 
 
 static struct argp_option options[] = {
-	{ "clustering-max-dist", 'd', "FLOAT", 0,
-		"Cluster points that have a distance in pixels below this value are part "
-		"of the same cluster (default: 15)", 0 },
+	/* TODO */
+	/* { "bf-matcher", 'b', "BOOL", 0, "Use this options to use a brute-force matcher", 0 }, */
 
-	{ "clustering-min-points", 'p', "SIZE_T", 0,
-		"A cluster is valid if it has at least this number of points "
-		"(default: 10)", 0 },
+	{ "clustering-max-dist", 'd', "FLOAT", 0, "Cluster points that have a distance in "
+		"pixels below this value are part of the same cluster (default: 15)", 0 },
 
-	{ "subspace-min-size", 's', "FLOAT", 0,
-		"A subspace cluster is valid if it has at least this side length "
-		"(default: 10)", 0 },
+	{ "clustering-min-points", 'p', "SIZE_T", 0, "A cluster is valid if it has at least "
+		"this number of points (default: 10)", 0 },
 
-	{ "homography-attempts", 'a', "size_t", 0,
-		"How many times should the bucket-points-homography loop repeat? (5)", 0 },
+	{ "subspace-min-size", 's', "FLOAT", 0, "A subspace cluster is valid if it has at "
+		"least this side length (default: 10)", 0 },
 
-	{ "certainty-minimum", 'c', "FLOAT", 0, "The minimum value of certainty that the algorithm accepts as a match (.2f)", 0 },
+	{ "homography-attempts", 'a', "size_t", 0, "How many times should the algorithm "
+		"project the homography of samples from each cluster", 0 },
+
+	{ "certainty-minimum", 'c', "FLOAT", 0, "The minimum value of certainty that the "
+		"algorithm accepts as a match (.2f)", 0 },
 
 	{0, 0, 0, 0, 0, 0}
 };
-
-__inline__ static bool
-parse_bool(char *arg)
-{
-	return arg && arg[0] == '1';
-}
 
 #include "stdlib.h"
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
@@ -58,7 +53,6 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 	switch (key) {
 		case 'a': args->homography_attempts = (size_t) strtol(arg, NULL, 10); break;
 
-		/* case 'b': args->show_bounds = parse_bool(arg); break; */
 		case 'c': args->minimum_certainty = strtof(arg, NULL); break;
 
 		case 'd': args->clustering_max_dist = strtof(arg, NULL); break;
@@ -225,9 +219,13 @@ int main(int argc, char **argv) {
 	}
 	dprint("Read number of train images (%lu, %lu bytes)", db_n, sizeof(db_n));
 
+#if 0
+	/* cv::FlannBasedMatcher matcher(new cv::flann::LshIndexParams(5, 24, 2)); */
+	cv::FlannBasedMatcher matcher;
+#else
 	/* TODO: research advantages of l2 over l1 */
-	static const cv::BFMatcher
-		matcher( query_hamming ? cv::NORM_HAMMING : cv::NORM_L1, false );
+	cv::BFMatcher matcher(query_hamming ? cv::NORM_HAMMING : cv::NORM_L1, false);
+#endif
 
 	for (size_t i = 0; i < db_n; i++) {
 		dprint("Processing train file %lu", i);
@@ -245,6 +243,12 @@ int main(int argc, char **argv) {
 		if (read(train_fd, (void*) filepath, path_bytes) < 0) {
 			perror("Couldn't read FilePath");
 			return 1;
+		}
+
+		if (DEBUG) {
+			fputs("Read FilePath: '", stderr);
+			write(2, (void*)filepath, path_bytes);
+			fputs("'\n", stderr);
 		}
 
 		/* The following performs subspace clustering on cross-checked matches,
@@ -286,7 +290,10 @@ int main(int argc, char **argv) {
 				for (auto it = buckets.begin(); it != buckets.end(); it++)
 					ftsize += std::min(min_points, (*it).size());
 
-				if (ftsize < 10) break;
+				if (ftsize < 10) {
+					dputs("  Gave Up: not enough Matches");
+					break;
+				}
 
 				std::vector<cv::Point2f> from(ftsize), to(ftsize);
 				size_t id = 0;
@@ -327,7 +334,10 @@ int main(int argc, char **argv) {
 						break;
 					}
 					
-					if (++w >= homography_attempts) break;
+					if (++w >= homography_attempts) {
+						dputs("  Gave Up: Too many attempts");
+						break;
+					}
 				}
 			} while (true);
 		}
