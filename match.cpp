@@ -122,7 +122,7 @@ read_descriptors(
 	}
 	dprint("Read Descriptor Mat Dimensions (%dx%d)", dim[0], dim[1]);
 
-	ssize_t all_descriptor_bytes = descriptor_bytes * dim[0] * dim[1];
+	size_t all_descriptor_bytes = descriptor_bytes * dim[0] * dim[1];
 	void *buffer = malloc(all_descriptor_bytes);
 
 	if (read(fd, buffer, all_descriptor_bytes) < 0) {
@@ -220,6 +220,7 @@ int main(int argc, char **argv) {
 	dprint("Read number of train images (%lu, %lu bytes)", db_n, sizeof(db_n));
 
 #if 0
+	/* I haven't researched FLANN very much. It seems buggy (but fast and accurate). */
 	/* cv::FlannBasedMatcher matcher(new cv::flann::LshIndexParams(5, 24, 2)); */
 	cv::FlannBasedMatcher matcher;
 #else
@@ -273,7 +274,6 @@ int main(int argc, char **argv) {
 			size_t w = 0;
 
 			do {
-
 				/* We extract matches from each bucket, if we project homography and find
 				 * out where the inliers are, we can probably take other kinds of
 				 * conclusions, too. */
