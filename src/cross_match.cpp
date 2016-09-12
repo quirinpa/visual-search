@@ -7,15 +7,15 @@ MATCH(
 		cv::Mat& d1, cv::Mat& d2,
 		std::function<void (const cv::DMatch&)> process_match)
 {
-#if 0
-	vector<vector<DMatch>> knnmatches;
-	matcher.knnMatch(d1, d2, knnmatches);
+#ifdef KNN_MATCH
+	std::vector<std::vector<cv::DMatch>> knnmatches;
+	matcher.knnMatch(d1, d2, knnmatches, 2);
 
-	for(vector<vector<DMatch>>::iterator it = knnmatches.begin();
+	for(auto it = knnmatches.begin();
 			it != knnmatches.end(); it++) {
 
-		vector<DMatch> top_matches = *it;
-		DMatch best_match = top_matches[0];
+		std::vector<cv::DMatch> top_matches = *it;
+		cv::DMatch best_match = top_matches[0];
 
 		if (top_matches.size() == 1 ||
 				best_match.distance <= .8f *

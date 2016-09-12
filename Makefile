@@ -13,6 +13,14 @@ CXXFLAGS := $(DEBUG) -I$(IDIR) -Wall -Wextra -pedantic -Wshadow -Wpointer-arith 
 	-Wcast-align -Wwrite-strings -Wmissing-declarations -Winline -Wno-long-long \
 	-Wuninitialized -Wconversion -Wredundant-decls -Wdouble-promotion
 
+ifneq ($(KNN_MATCH),)
+	CXXFLAGS := $(CXXFLAGS) -D KNN_MATCH
+endif
+
+ifneq ($(EXPERIMENTAL_FLANN),)
+	CXXFLAGS := $(CXXFLAGS) -D EXPERIMENTAL_FLANN
+endif
+
 # CFLAGS := -ansi -Wnested-externs -Wstrict-prototypes -Wmissing-prototypes $(CXXFLAGS)
 
 .PHONY: all clean todolist

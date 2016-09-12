@@ -41,7 +41,7 @@ static struct argp_option options[] = {
 		"project the homography of samples from each cluster", 0 },
 
 	{ "certainty-minimum", 'c', "FLOAT", 0, "The minimum value of certainty that the "
-		"algorithm accepts as a match (.2f)", 0 },
+		"algorithm accepts as a match (.0f)", 0 },
 
 	{0, 0, 0, 0, 0, 0}
 };
@@ -152,7 +152,7 @@ int main(int argc, char **argv) {
 	args.subspace_min_side = 10.0f;
 	args.homography_attempts = 5U;
 	args.query_path = NULL;
-	args.minimum_certainty = .2f;
+	args.minimum_certainty = .0f;
 
 	argp_parse(&argp, argc, argv, 0, 0, &args);
 
@@ -216,10 +216,9 @@ int main(int argc, char **argv) {
 	}
 	dprint("Read number of train images (%lu, %lu bytes)", db_n, sizeof(db_n));
 
-#if 0
-	/* I haven't researched FLANN very much. It seems buggy (but fast and accurate). */
-	/* cv::FlannBasedMatcher matcher(new cv::flann::LshIndexParams(5, 24, 2)); */
-	cv::FlannBasedMatcher matcher;
+#ifdef EXPERIMENTAL_FLANN
+	cv::FlannBasedMatcher matcher(new cv::flann::LshIndexParams(5, 24, 2));
+	/* cv::FlannBasedMatcher matcher; */
 #else
 	/* TODO: research advantages of l2 over l1 */
 	cv::BFMatcher matcher(query_hamming ? cv::NORM_HAMMING : cv::NORM_L1, false);
