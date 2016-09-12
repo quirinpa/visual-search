@@ -1,0 +1,24 @@
+.\" Manpage for vsconvert
+.\" Contact quirinpa@gmail.com to correct errors or typos.
+.TH man 8 "12 Sep 2016" "VERSION" "vsconvert man page"
+.SH NAME
+vsconvert \- create query and train files for use with vsmatch
+.SH SYNOPSIS
+vsconvert (options) [image globs]
+.SH DESCRIPTION
+vsconvert is a shell program that creates query and train files for use with vsmatch.
+.SH OPTIONS
+.IP -q
+Use this option to generate a query file (as opposed to a database of image features). This should be used for generating the first argument of vsmatch.
+.IP -d [UINT (0-5)]
+Specify feature detection algorithm. Available options are: BRISK, ORB, SIFT, SURF, KAZE and AKAZE, represented by 0-5, respectively. Default: 0 (BRISK)
+.IP -e [UINT (0-5)]
+Sepecify descriptor extracting algorithm. Same options as the feature detection algorithm (option -d). Default: 0 (BRISK)
+.IP -o [STRING]
+Output file path. Defaults to stdout.
+.SH SEE ALSO
+vsmatch
+.SH BUGS
+No known bugs
+.SH AUTHOR
+Paulo Quirino (quirinpa@gmail.com)

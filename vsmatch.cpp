@@ -1,6 +1,6 @@
 #include <argp.h>
 
-const char *argp_program_version = "vs-match 0.1b-rc2",
+const char *argp_program_version = "vs-match " PROGRAM_VERSION,
 			*argp_program_bug_address = "quirinpa@gmail.com";
 
 static char doc[] = "Match query and train descriptors to identify if an image "\

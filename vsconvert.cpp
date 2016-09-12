@@ -1,6 +1,6 @@
 #include <argp.h>
 
-const char *argp_program_version = "vdf_convert 0.1a",
+const char *argp_program_version = "vsconvert " PROGRAM_VERSION,
 			*argp_program_bug_address = "quirinpa@gmail.com";
 
 static char doc[] =

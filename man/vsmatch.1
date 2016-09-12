@@ -1,0 +1,26 @@
+.\" Manpage for vsmatch
+.\" Contact quirinpa@gmail.com to correct errors or typos.
+.TH man 8 "12 Sep 2016" "VERSION" "vsmatch man page"
+.SH NAME
+vsmatch \- match vsconvert query and train files
+.SH SYNOPSIS
+vsmatch (options) [query_file] [train_file]
+.SH DESCRIPTION
+vsmatch is a shell program that matches query and train files (man vsconvert), for the purpose of performing image recognition (through scale-invariant feature detection) identifying instances of an object or image, and presenting you with information for each match. Testing for matches involves a simple geometric analysis (subspace clustering) and extraction algorithm, in which some matches from each cluster are grouped and evaluated as a valid projection of the object.
+.SH OPTIONS
+.IP -d [UINT]
+Maximum x/y distance (in pixels) between points that are considered part of the same cluster. Default: 15
+.IP -p [UINT]
+Minimum number of points for a cluster to be considered valid. Default: 10
+.IP -s [UFLOAT]
+Minimum side length (in pixels) of a valid cluster. Default: 10
+.IP -a [UINT]
+How many times should the program attempt to extract and project samples from each cluster before giving up? Default: 5
+.IP -c [UFLOAT]
+A value of "certainty" is calculated from the projection of the samples extracted from each cluster. Use this option to specify the minimum value that shall be evaluated as a match. Default: .0f
+.SH SEE ALSO
+vsconvert
+.SH BUGS
+No known bugs
+.SH AUTHOR
+Paulo Quirino (quirinpa@gmail.com)
