@@ -1,34 +1,6 @@
-VERSION := 0.1b-rc2
+include config.mk
 
-IDIR := include
-SDIR := src
-
-VPATH = $(IDIR) $(SDIR)
-
-ifeq ($(DEBUG),)
-	DEBUG := -O
-else
-	DEBUG := -g -pg -D DEBUG
-endif
-
-CXXFLAGS := $(DEBUG) -I$(IDIR) -Wall -Wextra -pedantic -Wshadow -Wpointer-arith \
-	-Wcast-align -Wwrite-strings -Wmissing-declarations -Winline -Wno-long-long \
-	-Wuninitialized -Wconversion -Wredundant-decls -Wdouble-promotion -D PROGRAM_VERSION=\"$(VERSION)\"
-
-ifneq ($(KNN_MATCH),)
-	CXXFLAGS := $(CXXFLAGS) -D KNN_MATCH
-endif
-
-ifneq ($(EXPERIMENTAL_FLANN),)
-	CXXFLAGS := $(CXXFLAGS) -D EXPERIMENTAL_FLANN
-endif
-
-# CFLAGS := -ansi -Wnested-externs -Wstrict-prototypes -Wmissing-prototypes $(CXXFLAGS)
-
-# .PHONY: all install clean todolist
-.PHONY: all clean todolist
-
-EXES := vsmatch vsconvert
+.PHONY: all install uninstall clean todolist
 
 all: $(EXES)
 
@@ -53,9 +25,13 @@ install: $(EXES)
 	@mkdir -p ${DESTDIR}${MANPREFIX}/man1
 	@sed "s/VERSION/${VERSION}/g" < man/vsconvert.1 > ${DESTDIR}${MANPREFIX}/man1/vsconvert.1
 	@sed "s/VERSION/${VERSION}/g" < man/vsmatch.1 > ${DESTDIR}${MANPREFIX}/man1/vsmatch.1
-	@chmod 644 ${DESTDIR}${MANPREFIX}/man1/vsconvert.1
-	@chmod 644 ${DESTDIR}${MANPREFIX}/man1/vsmatch.1
+	@chmod 644 ${DESTDIR}${MANPREFIX}/man1/vsconvert.1 ${DESTDIR}${MANPREFIX}/man1/vsmatch.1
 
+uninstall:
+	@echo uninstalling execubable files from ${DESTDIR}${PREFIX}/bin
+	@rm -f ${DESTDIR}${PREFIX}/bin/vsmatch ${DESTDIR}${PREFIX}/bin/vsconvert
+	@echo uninstalling man pages from ${DESTDIR}${MANPREFIX}/man1
+	@rm -f ${DESTDIR}${MANPREFIX}/man1/vsconvert.1 ${DESTDIR}${MANPREFIX}/man1/vsmatch.1
 
 clean:
 	-@$(RM) -r $(wildcard output* *.o $(EXES) convert proj.zip tags)
