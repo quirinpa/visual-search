@@ -40,8 +40,8 @@ static struct argp_option options[] = {
 	{ "homography-attempts", 'a', "size_t", 0, "How many times should the algorithm "
 		"project the homography of samples from each cluster", 0 },
 
-	{ "certainty-minimum", 'c', "FLOAT", 0, "The minimum value of certainty that the "
-		"algorithm accepts as a match (.0f)", 0 },
+	/* { "certainty-minimum", 'c', "FLOAT", 0, "The minimum value of certainty that the " */
+	/* 	"algorithm accepts as a match (.0f)", 0 }, */
 
 	{0, 0, 0, 0, 0, 0}
 };
@@ -317,18 +317,23 @@ int main(int argc, char **argv) {
 					double det = h.at<double>(0,0)*h.at<double>(1,1) - \
 										 h.at<double>(1,0)*h.at<double>(0,1); 
 
-					/* FIXME double to float conversion */
-					float certainty = (float) (1.0 - fabs(0.5 - det) * 2.0);
-					dprint("  Determinant is %f. Certainty: %f", det, (double) certainty);
+					dprint("  Determinant is %f", det);
 
-					/* dprint(" c%.1f%%", (double) (certainty*100.0f)); */
+					if (det > 0 && det < 100) {
+						dputs("  ACCEPT");
+					/* /1* FIXME double to float conversion *1/ */
+					/* float certainty = (float) (1.0 - fabs(0.5 - det) * 2.0); */
+					/* dprint("  Determinant is %f. Certainty: %f", det, (double) certainty); */
 
-					if (certainty > minimum_certainty) {
+					/* /1* dprint(" c%.1f%%", (double) (certainty*100.0f)); *1/ */
+
+					/* if (certainty > minimum_certainty) { */
 						write(1, (void*)filepath, path_bytes);
 						static const char new_line = '\n';
 						write(1, (void*) &new_line, sizeof(char));
 						break;
 					}
+					dputs("  REJECTED");
 					
 					if (++w >= homography_attempts) {
 						dputs("  Gave Up: Too many attempts");

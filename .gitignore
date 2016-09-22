@@ -9,6 +9,7 @@ train
 gmon.out
 errorfile
 starbucks/**
+gmon.out
 *.o
 .*.swp
 .*.swo
