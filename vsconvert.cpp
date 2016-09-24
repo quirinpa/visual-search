@@ -31,7 +31,7 @@ static struct argp_option options[] = {
 	{ "descriptor-extractor", 'e', "UCHAR", 0,
 		"Specify descriptor extractor algorithm (default: BRISK).", 0 },
 
-	{ "output", 'o', "FILE", 0, "Specify output filename. If (stdout)", 0 },
+	{ "output", 'o', "FILE", 0, "Specify output filename (stdout).", 0 },
 
 	{NULL, '\0', NULL, 0, NULL, 0}
 };
